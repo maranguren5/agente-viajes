@@ -22,10 +22,10 @@ BUCKET_HISTORIAL = os.environ.get("BUCKET_HISTORIAL")
 ARCHIVO_HISTORIAL = "historial_vuelos.json"
 ARCHIVO_ESTADO = "estado_cursor.json"
 
-# Freno de seguridad para no exceder timeout de Cloud Run (130s)
+# Freno de seguridad para no superar los 130s de Cloud Run
 TIEMPO_MAXIMO_SEGUNDOS = 105.0
 
-# Orden estricto solicitado: Basilea -> Ginebra -> Zúrich
+# Orden estricto: Basilea -> Ginebra -> Zúrich
 ORDEN_AEROPUERTOS = ["BSL", "GVA", "ZRH"]
 
 NOMBRES_AEROPUERTOS = {
@@ -34,7 +34,6 @@ NOMBRES_AEROPUERTOS = {
     "ZRH": "Zúrich (ZRH)"
 }
 
-# Presupuesto en CHF según duración
 PRESUPUESTO_ESCALONADO_CHF = {
     1: 47.5,
     2: 45.0,
@@ -42,8 +41,182 @@ PRESUPUESTO_ESCALONADO_CHF = {
     4: 70.0
 }
 
-# Códigos IATA de España peninsular a excluir (mantenemos PMI)
-EXCLUIR_IATA = {"MAD", "BCN", "VLC", "AGP", "SVQ", "ALC", "BIO", "SCQ", "ZAZ", "SDR", "OVD", "VLL"}
+# ==================== CENSO OFICIAL DE VUELOS DIRECTOS EUROPEOS ==================== #
+# Sin España peninsular (mantiene Baleares PMI/IBZ/MAH). Fuente oficial aeroportuaria.
+DESTINOS_DIRECTOS_POR_AEROPUERTO = {
+    "BSL": [
+        {"codigo": "LON", "nombre": "Londres"},
+        {"codigo": "PRN", "nombre": "Pristina"},
+        {"codigo": "PMI", "nombre": "Palma de Mallorca"},
+        {"codigo": "OPO", "nombre": "Oporto"},
+        {"codigo": "LIS", "nombre": "Lisboa"},
+        {"codigo": "FAO", "nombre": "Faro"},
+        {"codigo": "BUD", "nombre": "Budapest"},
+        {"codigo": "KRK", "nombre": "Cracovia"},
+        {"codigo": "WAW", "nombre": "Varsovia"},
+        {"codigo": "WRO", "nombre": "Breslavia"},
+        {"codigo": "BER", "nombre": "Berlín"},
+        {"codigo": "HAM", "nombre": "Hamburgo"},
+        {"codigo": "MUC", "nombre": "Múnich"},
+        {"codigo": "FRA", "nombre": "Fráncfort"},
+        {"codigo": "VIE", "nombre": "Viena"},
+        {"codigo": "AMS", "nombre": "Ámsterdam"},
+        {"codigo": "CPH", "nombre": "Copenhague"},
+        {"codigo": "OSL", "nombre": "Oslo"},
+        {"codigo": "ZAG", "nombre": "Zagreb"},
+        {"codigo": "SPU", "nombre": "Split"},
+        {"codigo": "DBV", "nombre": "Dubrovnik"},
+        {"codigo": "ZAD", "nombre": "Zadar"},
+        {"codigo": "PRG", "nombre": "Praga"},
+        {"codigo": "OTP", "nombre": "Bucarest"},
+        {"codigo": "CLJ", "nombre": "Cluj-Napoca"},
+        {"codigo": "IAS", "nombre": "Iași"},
+        {"codigo": "SOF", "nombre": "Sofía"},
+        {"codigo": "SKP", "nombre": "Skopie"},
+        {"codigo": "BEG", "nombre": "Belgrado"},
+        {"codigo": "TIA", "nombre": "Tirana"},
+        {"codigo": "NCE", "nombre": "Niza"},
+        {"codigo": "BOD", "nombre": "Burdeos"},
+        {"codigo": "TLS", "nombre": "Toulouse"},
+        {"codigo": "NTE", "nombre": "Nantes"},
+        {"codigo": "CDG", "nombre": "París"},
+        {"codigo": "ROM", "nombre": "Roma"},
+        {"codigo": "VCE", "nombre": "Venecia"},
+        {"codigo": "NAP", "nombre": "Nápoles"},
+        {"codigo": "CTA", "nombre": "Catania"},
+        {"codigo": "PMO", "nombre": "Palermo"},
+        {"codigo": "BRI", "nombre": "Bari"},
+        {"codigo": "BDS", "nombre": "Brindisi"},
+        {"codigo": "CAG", "nombre": "Cagliari"},
+        {"codigo": "OLB", "nombre": "Olbia"},
+        {"codigo": "MLA", "nombre": "Malta"},
+        {"codigo": "ATH", "nombre": "Atenas"},
+        {"codigo": "SKG", "nombre": "Tesalónica"},
+        {"codigo": "HER", "nombre": "Heraclión"},
+        {"codigo": "CFU", "nombre": "Corfú"},
+        {"codigo": "DUB", "nombre": "Dublín"},
+        {"codigo": "EDI", "nombre": "Edimburgo"},
+        {"codigo": "MAN", "nombre": "Mánchester"},
+        {"codigo": "BRS", "nombre": "Bristol"},
+        {"codigo": "LCA", "nombre": "Lárnaca"}
+    ],
+    "GVA": [
+        {"codigo": "LON", "nombre": "Londres"},
+        {"codigo": "MAN", "nombre": "Mánchester"},
+        {"codigo": "EDI", "nombre": "Edimburgo"},
+        {"codigo": "BRS", "nombre": "Bristol"},
+        {"codigo": "DUB", "nombre": "Dublín"},
+        {"codigo": "LIS", "nombre": "Lisboa"},
+        {"codigo": "OPO", "nombre": "Oporto"},
+        {"codigo": "FAO", "nombre": "Faro"},
+        {"codigo": "PMI", "nombre": "Palma de Mallorca"},
+        {"codigo": "IBZ", "nombre": "Ibiza"},
+        {"codigo": "NCE", "nombre": "Niza"},
+        {"codigo": "BOD", "nombre": "Burdeos"},
+        {"codigo": "NTE", "nombre": "Nantes"},
+        {"codigo": "CDG", "nombre": "París"},
+        {"codigo": "AMS", "nombre": "Ámsterdam"},
+        {"codigo": "BRU", "nombre": "Bruselas"},
+        {"codigo": "LUX", "nombre": "Luxemburgo"},
+        {"codigo": "FRA", "nombre": "Fráncfort"},
+        {"codigo": "MUC", "nombre": "Múnich"},
+        {"codigo": "BER", "nombre": "Berlín"},
+        {"codigo": "HAM", "nombre": "Hamburgo"},
+        {"codigo": "VIE", "nombre": "Viena"},
+        {"codigo": "PRG", "nombre": "Praga"},
+        {"codigo": "BUD", "nombre": "Budapest"},
+        {"codigo": "WAW", "nombre": "Varsovia"},
+        {"codigo": "KRK", "nombre": "Cracovia"},
+        {"codigo": "CPH", "nombre": "Copenhague"},
+        {"codigo": "OSL", "nombre": "Oslo"},
+        {"codigo": "ARN", "nombre": "Estocolmo"},
+        {"codigo": "HEL", "nombre": "Helsinki"},
+        {"codigo": "ROM", "nombre": "Roma"},
+        {"codigo": "VCE", "nombre": "Venecia"},
+        {"codigo": "NAP", "nombre": "Nápoles"},
+        {"codigo": "CTA", "nombre": "Catania"},
+        {"codigo": "PMO", "nombre": "Palermo"},
+        {"codigo": "OLB", "nombre": "Olbia"},
+        {"codigo": "CAG", "nombre": "Cagliari"},
+        {"codigo": "BRI", "nombre": "Bari"},
+        {"codigo": "MLA", "nombre": "Malta"},
+        {"codigo": "ATH", "nombre": "Atenas"},
+        {"codigo": "HER", "nombre": "Heraclión"},
+        {"codigo": "SKP", "nombre": "Skopie"},
+        {"codigo": "PRN", "nombre": "Pristina"},
+        {"codigo": "BEG", "nombre": "Belgrado"},
+        {"codigo": "TIA", "nombre": "Tirana"},
+        {"codigo": "OTP", "nombre": "Bucarest"},
+        {"codigo": "SOF", "nombre": "Sofía"}
+    ],
+    "ZRH": [
+        {"codigo": "LON", "nombre": "Londres"},
+        {"codigo": "MAN", "nombre": "Mánchester"},
+        {"codigo": "EDI", "nombre": "Edimburgo"},
+        {"codigo": "BHX", "nombre": "Birmingham"},
+        {"codigo": "DUB", "nombre": "Dublín"},
+        {"codigo": "BER", "nombre": "Berlín"},
+        {"codigo": "HAM", "nombre": "Hamburgo"},
+        {"codigo": "DUS", "nombre": "Düsseldorf"},
+        {"codigo": "FRA", "nombre": "Fráncfort"},
+        {"codigo": "MUC", "nombre": "Múnich"},
+        {"codigo": "HAJ", "nombre": "Hannover"},
+        {"codigo": "VIE", "nombre": "Viena"},
+        {"codigo": "AMS", "nombre": "Ámsterdam"},
+        {"codigo": "BRU", "nombre": "Bruselas"},
+        {"codigo": "CDG", "nombre": "París"},
+        {"codigo": "NCE", "nombre": "Niza"},
+        {"codigo": "BOD", "nombre": "Burdeos"},
+        {"codigo": "NTE", "nombre": "Nantes"},
+        {"codigo": "LIS", "nombre": "Lisboa"},
+        {"codigo": "OPO", "nombre": "Oporto"},
+        {"codigo": "FAO", "nombre": "Faro"},
+        {"codigo": "PMI", "nombre": "Palma de Mallorca"},
+        {"codigo": "IBZ", "nombre": "Ibiza"},
+        {"codigo": "ROM", "nombre": "Roma"},
+        {"codigo": "MIL", "nombre": "Milán"},
+        {"codigo": "VCE", "nombre": "Venecia"},
+        {"codigo": "NAP", "nombre": "Nápoles"},
+        {"codigo": "CTA", "nombre": "Catania"},
+        {"codigo": "PMO", "nombre": "Palermo"},
+        {"codigo": "BLQ", "nombre": "Bolonia"},
+        {"codigo": "FLR", "nombre": "Florencia"},
+        {"codigo": "BRI", "nombre": "Bari"},
+        {"codigo": "BDS", "nombre": "Brindisi"},
+        {"codigo": "OLB", "nombre": "Olbia"},
+        {"codigo": "CAG", "nombre": "Cagliari"},
+        {"codigo": "MLA", "nombre": "Malta"},
+        {"codigo": "PRG", "nombre": "Praga"},
+        {"codigo": "BUD", "nombre": "Budapest"},
+        {"codigo": "WAW", "nombre": "Varsovia"},
+        {"codigo": "KRK", "nombre": "Cracovia"},
+        {"codigo": "WRO", "nombre": "Breslavia"},
+        {"codigo": "GDN", "nombre": "Gdansk"},
+        {"codigo": "ZAG", "nombre": "Zagreb"},
+        {"codigo": "SPU", "nombre": "Split"},
+        {"codigo": "DBV", "nombre": "Dubrovnik"},
+        {"codigo": "LJU", "nombre": "Liubliana"},
+        {"codigo": "BEG", "nombre": "Belgrado"},
+        {"codigo": "SOF", "nombre": "Sofía"},
+        {"codigo": "OTP", "nombre": "Bucarest"},
+        {"codigo": "CLJ", "nombre": "Cluj-Napoca"},
+        {"codigo": "SKP", "nombre": "Skopie"},
+        {"codigo": "PRN", "nombre": "Pristina"},
+        {"codigo": "TIA", "nombre": "Tirana"},
+        {"codigo": "CPH", "nombre": "Copenhague"},
+        {"codigo": "OSL", "nombre": "Oslo"},
+        {"codigo": "ARN", "nombre": "Estocolmo"},
+        {"codigo": "GOT", "nombre": "Gotemburgo"},
+        {"codigo": "HEL", "nombre": "Helsinki"},
+        {"codigo": "RIX", "nombre": "Riga"},
+        {"codigo": "VNO", "nombre": "Vilna"},
+        {"codigo": "TLL", "nombre": "Tallin"},
+        {"codigo": "ATH", "nombre": "Atenas"},
+        {"codigo": "SKG", "nombre": "Tesalónica"},
+        {"codigo": "HER", "nombre": "Heraclión"},
+        {"codigo": "LCA", "nombre": "Lárnaca"}
+    ]
+}
 
 
 # ======================== PERSISTENCIA GCS ======================== #
@@ -55,7 +228,7 @@ def obtener_blob(nombre_archivo):
         bucket = client.bucket(BUCKET_HISTORIAL)
         return bucket.blob(nombre_archivo)
     except Exception as e:
-        print(f"[GCS Error] Error de conexión: {e}")
+        print(f"[GCS Error] Conexión fallida: {e}")
         return None
 
 def cargar_json_storage(nombre_archivo, defecto):
@@ -73,79 +246,11 @@ def guardar_json_storage(nombre_archivo, datos):
         try:
             blob.upload_from_string(json.dumps(datos, ensure_ascii=False, indent=2), content_type="application/json")
         except Exception as e:
-            print(f"[GCS Error] Error al guardar {nombre_archivo}: {e}")
-
-
-# ======================== DESCUBRIMIENTO DINÁMICO DE DESTINOS ======================== #
-def descubrir_destinos_directos(page, origen_iata):
-    """Explora Google Flights para obtener dinámicamente las ciudades con vuelo directo."""
-    destinos_descubiertos = []
-    url_explore = f"https://www.google.com/travel/explore?q=Flights%20from%20{origen_iata}%20to%20Europe&hl=es-CH&gl=ch&curr=CHF"
-    print(f"[Descubrimiento] Buscando destinos directos para {origen_iata}...")
-
-    try:
-        page.goto(url_explore, wait_until="domcontentloaded", timeout=12000)
-        time.sleep(1.5)
-
-        # Aceptar cookies si surge banner
-        try:
-            b_cookie = page.locator("button:has-text('Aceptar todo'), button:has-text('Accept all'), button:has-text('Alle akzeptieren')").first
-            if b_cookie.is_visible(timeout=800):
-                b_cookie.click()
-        except Exception:
-            pass
-
-        # Filtrar por vuelos directos en la interfaz
-        try:
-            boton_escalas = page.locator("button:has-text('Escalas'), button:has-text('Stops')").first
-            if boton_escalas.is_visible(timeout=1000):
-                boton_escalas.click()
-                time.sleep(0.4)
-                opcion_directo = page.locator("span:has-text('Solo directos'), span:has-text('Nonstop only'), span:has-text('Nur Nonstop')").first
-                if opcion_directo.is_visible(timeout=1000):
-                    opcion_directo.click()
-                time.sleep(1)
-        except Exception:
-            pass
-
-        # Extraer destinos directos listados
-        tarjetas = page.locator("div[role='listitem'], div.pIav2d, li.pIav2d, div.kZlzfe").all()
-        codigos_vistos = set()
-
-        for t in tarjetas:
-            texto = t.inner_text()
-            # Buscar patrones IATA de 3 letras mayúsculas
-            encontrados = re.findall(r"\b([A-Z]{3})\b", texto)
-            for c in encontrados:
-                if c not in ORDEN_AEROPUERTOS and c not in EXCLUIR_IATA and c not in codigos_vistos:
-                    lineas = [l.strip() for l in texto.split("\n") if l.strip()]
-                    nombre = lineas[0] if lineas else c
-                    codigos_vistos.add(c)
-                    destinos_descubiertos.append({"codigo": c, "nombre": nombre})
-
-        print(f"[Descubrimiento] {len(destinos_descubiertos)} destinos directos encontrados para {origen_iata}.")
-    except Exception as e:
-        print(f"[Descubrimiento Error] Falló escaneo dinámico: {e}")
-
-    # Lista de respaldo base si la vista explore estuviera saturada
-    if not destinos_descubiertos:
-        destinos_descubiertos = [
-            {"codigo": "LON", "nombre": "Londres"},
-            {"codigo": "BER", "nombre": "Berlín"},
-            {"codigo": "PRG", "nombre": "Praga"},
-            {"codigo": "BUD", "nombre": "Budapest"},
-            {"codigo": "VCE", "nombre": "Venecia"},
-            {"codigo": "DUB", "nombre": "Dublín"},
-            {"codigo": "PMI", "nombre": "Palma de Mallorca"},
-            {"codigo": "KRK", "nombre": "Cracovia"},
-            {"codigo": "ZAG", "nombre": "Zagreb"},
-            {"codigo": "POZ", "nombre": "Poznan"}
-        ]
-    return destinos_descubiertos
+            print(f"[GCS Error] Error guardando {nombre_archivo}: {e}")
 
 
 # ======================== GESTIÓN DE COLA SECUENCIAL ======================== #
-def sincronizar_cola_jerarquica(page):
+def sincronizar_cola():
     estado = cargar_json_storage(ARCHIVO_ESTADO, {
         "aeropuerto_idx": 0,
         "ciudades_pendientes": [],
@@ -153,21 +258,20 @@ def sincronizar_cola_jerarquica(page):
         "tarea_en_curso": None
     })
 
-    # Si hay una ciudad pendiente de completar (por corte a los 105s)
+    # Si hay una tarea a medio hacer (por corte de 105s)
     if estado.get("tarea_en_curso"):
         tarea = estado["tarea_en_curso"]
         return tarea, estado
 
-    # Si no quedan ciudades en el aeropuerto actual, pasamos al siguiente o inicializamos
+    # Si no quedan ciudades en el aeropuerto en curso, avanzar al siguiente
     if not estado.get("ciudades_pendientes"):
         if estado.get("ciudades_completadas_aeropuerto"):
-            # Avanzar al siguiente aeropuerto
             estado["aeropuerto_idx"] = (estado.get("aeropuerto_idx", 0) + 1) % len(ORDEN_AEROPUERTOS)
             estado["ciudades_completadas_aeropuerto"] = []
 
         aeropuerto_actual = ORDEN_AEROPUERTOS[estado["aeropuerto_idx"]]
-        destinos = descubrir_destinos_directos(page, aeropuerto_actual)
-        estado["ciudades_pendientes"] = destinos
+        # Cargamos el catálogo completo real de ese aeropuerto
+        estado["ciudades_pendientes"] = list(DESTINOS_DIRECTOS_POR_AEROPUERTO[aeropuerto_actual])
         guardar_json_storage(ARCHIVO_ESTADO, estado)
 
     aeropuerto_actual = ORDEN_AEROPUERTOS[estado["aeropuerto_idx"]]
@@ -185,7 +289,7 @@ def sincronizar_cola_jerarquica(page):
     return tarea, estado
 
 
-# ======================== BÚSQUEDA Y EXTRACCIÓN ======================== #
+# ======================== GENERADOR Y MOTOR DE BÚSQUEDA ======================== #
 def generar_combinaciones(dia_inicio=0, dias_a_cubrir=30):
     hoy = datetime.now()
     combs = []
@@ -222,8 +326,6 @@ def simular_humano(page):
     except Exception:
         pass
 
-
-# ======================== MOTOR DE RASTREO ======================== #
 def rastrear_tarea_local(page, tarea, t_inicio):
     vuelos_nuevos = []
     origen = tarea["origen"]
@@ -315,7 +417,7 @@ def rastrear_tarea_local(page, tarea, t_inicio):
     return vuelos_nuevos, quedo_incompleta, dia_corte, metricas
 
 
-# ======================== ENVÍO DE EMAIL DUAL Y JERÁRQUICO ======================== #
+# ======================== ENVÍO DE EMAIL ======================== #
 def enviar_correo_alertas(nuevos, historial_completo, tarea):
     if not (SENDER_EMAIL and SENDER_PASSWORD and nuevos):
         return False
@@ -326,7 +428,6 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea):
 
     asunto = f"✈️ [{origen}] Nuevos Chollos a {nom_ciudad} ({min_precio} CHF)"
 
-    # Tarjetas de nuevos chollos
     bloques_novedades = ""
     for v in sorted(nuevos, key=lambda x: x["precio_chf"]):
         bloques_novedades += f"""
@@ -351,7 +452,6 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea):
         </div>
         """
 
-    # Historial agrupado por Aeropuerto de Salida
     por_aeropuerto = defaultdict(list)
     for v in historial_completo:
         por_aeropuerto[v.get("origen_iata", "Otros")].append(v)
@@ -373,7 +473,7 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea):
         secciones_aeropuerto_html += f"""
         <div style="background-color:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;">
           <div style="font-weight:700;font-size:13px;color:#1e293b;margin-bottom:6px;">
-            🛫 Salidas desde {NOMBRES_AEROPUERTOS.get(aero, aero)} ({len(lista_aero)} chollos registrados)
+            🛫 Salidas desde {NOMBRES_AEROPUERTOS.get(aero, aero)} ({len(lista_aero)} chollos guardados)
           </div>
           <table style="width:100%;font-size:12px;color:#334155;border-collapse:collapse;">
             {filas}
@@ -428,6 +528,8 @@ def buscar_vuelos_fin_de_semana_http(request=None, path=""):
     historial = cargar_json_storage(ARCHIVO_HISTORIAL, [])
     ids_registrados = {v.get("id") for v in historial if "id" in v}
 
+    tarea, estado = sincronizar_cola()
+
     with sync_playwright() as p:
         browser = p.chromium.launch(
             headless=True,
@@ -440,10 +542,6 @@ def buscar_vuelos_fin_de_semana_http(request=None, path=""):
         )
         page = context.new_page()
 
-        # 1. Obtener la siguiente tarea de la cola jerárquica
-        tarea, estado = sincronizar_cola_jerarquica(page)
-
-        # 2. Rastrear la ciudad
         nuevos_encontrados, incompleta, corte, metricas = rastrear_tarea_local(page, tarea, t0)
 
         browser.close()
@@ -460,12 +558,12 @@ def buscar_vuelos_fin_de_semana_http(request=None, path=""):
         }
     else:
         estado["tarea_en_curso"] = None
-        if tarea["destino_codigo"] not in estado.get("ciudades_completadas_aeropuerto", []):
-            estado.setdefault("ciudades_completadas_aeropuerto", []).append(f"{tarea['destino_nombre']} ({tarea['destino_codigo']})")
+        item_completado = f"{tarea['destino_nombre']} ({tarea['destino_codigo']})"
+        if item_completado not in estado.get("ciudades_completadas_aeropuerto", []):
+            estado.setdefault("ciudades_completadas_aeropuerto", []).append(item_completado)
 
     guardar_json_storage(ARCHIVO_ESTADO, estado)
 
-    # Filtrar solo vuelos nuevos no registrados
     nuevos_reales = []
     for v in nuevos_encontrados:
         if v["id"] not in ids_registrados:
@@ -482,7 +580,6 @@ def buscar_vuelos_fin_de_semana_http(request=None, path=""):
     ciudades_ya_revisadas = estado.get("ciudades_completadas_aeropuerto", [])
     ciudades_pendientes_count = len(estado.get("ciudades_pendientes", []))
 
-    # JSON con el reporte solicitado
     return jsonify({
         "status": "ok",
         "motor": "playwright_local_chromium",
