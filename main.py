@@ -8,7 +8,7 @@ from collections import defaultdict
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
-from flask import Flask, jsonify
+from flask import Flask, jsonify, render_template_string
 from flask_cors import CORS
 from google.cloud import storage
 from playwright.sync_api import sync_playwright
@@ -22,10 +22,8 @@ BUCKET_HISTORIAL = os.environ.get("BUCKET_HISTORIAL")
 ARCHIVO_HISTORIAL = "historial_vuelos.json"
 ARCHIVO_ESTADO = "estado_cursor.json"
 
-# Freno de seguridad para no superar los 130s de Cloud Run
 TIEMPO_MAXIMO_SEGUNDOS = 105.0
 
-# Orden estricto: Basilea -> Ginebra -> Zúrich
 ORDEN_AEROPUERTOS = ["BSL", "GVA", "ZRH"]
 
 NOMBRES_AEROPUERTOS = {
@@ -41,8 +39,6 @@ PRESUPUESTO_ESCALONADO_CHF = {
     4: 70.0
 }
 
-# ==================== CENSO OFICIAL DE VUELOS DIRECTOS EUROPEOS ==================== #
-# Sin España peninsular (mantiene Baleares PMI/IBZ/MAH). Fuente oficial aeroportuaria.
 DESTINOS_DIRECTOS_POR_AEROPUERTO = {
     "BSL": [
         {"codigo": "LON", "nombre": "Londres"},
@@ -218,7 +214,6 @@ DESTINOS_DIRECTOS_POR_AEROPUERTO = {
     ]
 }
 
-
 # ======================== PERSISTENCIA GCS ======================== #
 def obtener_blob(nombre_archivo):
     if not BUCKET_HISTORIAL:
@@ -248,7 +243,6 @@ def guardar_json_storage(nombre_archivo, datos):
         except Exception as e:
             print(f"[GCS Error] Error guardando {nombre_archivo}: {e}")
 
-
 # ======================== GESTIÓN DE COLA SECUENCIAL ======================== #
 def sincronizar_cola():
     estado = cargar_json_storage(ARCHIVO_ESTADO, {
@@ -258,19 +252,16 @@ def sincronizar_cola():
         "tarea_en_curso": None
     })
 
-    # Si hay una tarea a medio hacer (por corte de 105s)
     if estado.get("tarea_en_curso"):
         tarea = estado["tarea_en_curso"]
         return tarea, estado
 
-    # Si no quedan ciudades en el aeropuerto en curso, avanzar al siguiente
     if not estado.get("ciudades_pendientes"):
         if estado.get("ciudades_completadas_aeropuerto"):
             estado["aeropuerto_idx"] = (estado.get("aeropuerto_idx", 0) + 1) % len(ORDEN_AEROPUERTOS)
             estado["ciudades_completadas_aeropuerto"] = []
 
         aeropuerto_actual = ORDEN_AEROPUERTOS[estado["aeropuerto_idx"]]
-        # Cargamos el catálogo completo real de ese aeropuerto
         estado["ciudades_pendientes"] = list(DESTINOS_DIRECTOS_POR_AEROPUERTO[aeropuerto_actual])
         guardar_json_storage(ARCHIVO_ESTADO, estado)
 
@@ -288,12 +279,12 @@ def sincronizar_cola():
     guardar_json_storage(ARCHIVO_ESTADO, estado)
     return tarea, estado
 
-
 # ======================== GENERADOR Y MOTOR DE BÚSQUEDA ======================== #
 def generar_combinaciones(dia_inicio=0, dias_a_cubrir=30):
     hoy = datetime.now()
     combs = []
-    for d in range(dia_inicio, min(dia_inicio + dias_a_cubrir, 32)):
+    # Límite estricto de 30 días vista
+    for d in range(dia_inicio, min(dia_inicio + dias_a_cubrir, 30)):
         fecha_ida = hoy + timedelta(days=d)
         for dur in [1, 2, 3, 4]:
             fecha_vuelta = fecha_ida + timedelta(days=dur - 1)
@@ -357,7 +348,11 @@ def rastrear_tarea_local(page, tarea, t_inicio):
         dur = c["duracion"]
         tope_chf = PRESUPUESTO_ESCALONADO_CHF.get(dur, 70.0)
 
-        url = f"https://www.google.com/travel/flights?q=Flights%20from%20{origen}%20to%20{cod_dst}%20on%20{ida}%20through%20{vuelta}&hl=es-CH&gl=ch&curr=CHF"
+        # Si duracion es 1 dia, nos aseguramos de que Google Flights entienda ida y vuelta el mismo dia
+        if dur == 1:
+            url = f"https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20{origen}%20to%20{cod_dst}%20departing%20{ida}%20returning%20{ida}&hl=es-CH&gl=ch&curr=CHF"
+        else:
+            url = f"https://www.google.com/travel/flights?q=Flights%20from%20{origen}%20to%20{cod_dst}%20on%20{ida}%20through%20{vuelta}&hl=es-CH&gl=ch&curr=CHF"
 
         try:
             page.goto(url, wait_until="domcontentloaded", timeout=8500)
@@ -396,7 +391,7 @@ def rastrear_tarea_local(page, tarea, t_inicio):
                             "precio_chf": precio,
                             "presupuesto_max_chf": tope_chf,
                             "duracion_dias": dur,
-                            "fechas": f"{ida} al {vuelta}",
+                            "fechas": f"{ida} al {vuelta}" if dur > 1 else f"{ida} (mismo día)",
                             "fecha_ida": ida,
                             "fecha_vuelta": vuelta,
                             "url": url,
@@ -416,9 +411,8 @@ def rastrear_tarea_local(page, tarea, t_inicio):
 
     return vuelos_nuevos, quedo_incompleta, dia_corte, metricas
 
-
-# ======================== ENVÍO DE EMAIL ======================== #
-def enviar_correo_alertas(nuevos, historial_completo, tarea):
+# ======================== ENVÍO DE EMAIL CON ENLACE AL PORTAL ======================== #
+def enviar_correo_alertas(nuevos, historial_completo, tarea, url_portal):
     if not (SENDER_EMAIL and SENDER_PASSWORD and nuevos):
         return False
 
@@ -452,34 +446,7 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea):
         </div>
         """
 
-    por_aeropuerto = defaultdict(list)
-    for v in historial_completo:
-        por_aeropuerto[v.get("origen_iata", "Otros")].append(v)
-
-    secciones_aeropuerto_html = ""
-    for aero in ORDEN_AEROPUERTOS:
-        lista_aero = por_aeropuerto.get(aero, [])
-        if not lista_aero:
-            continue
-
-        filas = "".join([f"""
-        <tr style="border-top:1px solid #f1f5f9;">
-          <td style="padding:6px 0;">{item['destino_nombre']} ({item['duracion_dias']}d) - {item['fechas']}</td>
-          <td style="padding:6px 0;text-align:right;font-weight:700;">{item['precio_chf']} CHF</td>
-          <td style="padding:6px 0;text-align:right;width:60px;"><a href="{item['url']}" style="color:#2563eb;text-decoration:none;font-size:11px;">Reservar</a></td>
-        </tr>
-        """ for item in sorted(lista_aero, key=lambda x: x["precio_chf"])[:5]])
-
-        secciones_aeropuerto_html += f"""
-        <div style="background-color:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;margin-bottom:12px;">
-          <div style="font-weight:700;font-size:13px;color:#1e293b;margin-bottom:6px;">
-            🛫 Salidas desde {NOMBRES_AEROPUERTOS.get(aero, aero)} ({len(lista_aero)} chollos guardados)
-          </div>
-          <table style="width:100%;font-size:12px;color:#334155;border-collapse:collapse;">
-            {filas}
-          </table>
-        </div>
-        """
+    total_guardados = len(historial_completo)
 
     html = f"""
     <div style="max-width:640px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background-color:#f8fafc;padding:20px;color:#0f172a;">
@@ -489,13 +456,18 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea):
       </div>
 
       <div style="background-color:#fff;padding:20px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
-        <h3 style="margin-top:0;font-size:14px;color:#16a34a;text-transform:uppercase;">🟢 Chollos Recientes Detectados</h3>
+        <h3 style="margin-top:0;font-size:14px;color:#16a34a;text-transform:uppercase;">🟢 Chollos Recién Detectados</h3>
         {bloques_novedades}
       </div>
 
-      <div style="background-color:#f1f5f9;padding:20px;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;">
-        <h3 style="margin-top:0;font-size:13px;color:#475569;text-transform:uppercase;">📁 Catálogo Activo por Aeropuerto de Salida</h3>
-        {secciones_aeropuerto_html if secciones_aeropuerto_html else "<p style='font-size:12px;color:#64748b;'>Se actualizará a medida que avancen los aeropuertos.</p>"}
+      <div style="background-color:#f1f5f9;padding:24px 20px;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;text-align:center;">
+        <h3 style="margin-top:0;font-size:15px;color:#1e293b;">📂 Catálogo Completo Interactivo ({total_guardados} vuelos guardados)</h3>
+        <p style="font-size:13px;color:#64748b;margin-bottom:18px;">
+          Entra a ver todas las carpetas organizadas por aeropuerto (Basilea, Ginebra, Zúrich) y navega por cada ciudad:
+        </p>
+        <a href="{url_portal}" style="display:inline-block;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 24px;border-radius:6px;box-shadow:0 2px 4px rgba(37,99,235,0.2);">
+          🚀 Abrir Catálogo Completo (3 Carpetas)
+        </a>
       </div>
     </div>
     """
@@ -516,10 +488,139 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea):
         print(f"[Email Error] Error al despachar correo: {e}")
         return False
 
+# ======================== VISTA WEB: PORTAL CON 3 CARPETAS ======================== #
+PLANTILLA_PORTAL_HTML = """
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Catálogo Completo - Radar de Vuelos Suiza</title>
+  <style>
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; background-color: #f1f5f9; color: #0f172a; margin: 0; padding: 20px; }
+    .container { max-width: 900px; margin: 0 auto; }
+    .header { background: #0f172a; color: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; text-align: center; }
+    .header h1 { margin: 0 0 8px 0; font-size: 26px; }
+    .header p { margin: 0; color: #94a3b8; font-size: 14px; }
+    
+    .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab-btn { flex: 1; min-width: 200px; background: white; border: 2px solid #cbd5e1; padding: 14px; border-radius: 8px; font-size: 15px; font-weight: 700; color: #334155; cursor: pointer; text-align: center; transition: all 0.2s; }
+    .tab-btn.active { background: #2563eb; color: white; border-color: #2563eb; box-shadow: 0 4px 6px -1px rgba(37,99,235,0.2); }
+    
+    .aeropuerto-content { display: none; }
+    .aeropuerto-content.active { display: block; }
+    
+    .ciudad-card { background: white; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
+    .ciudad-header { background: #f8fafc; padding: 14px 18px; font-weight: 700; font-size: 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+    .ciudad-header:hover { background: #f1f5f9; }
+    .badge { background: #e2e8f0; color: #334155; font-size: 12px; padding: 4px 10px; border-radius: 12px; font-weight: 600; }
+    
+    .vuelos-list { padding: 16px; display: none; background: #ffffff; }
+    .vuelos-list.open { display: block; }
+    
+    .vuelo-item { border: 1px solid #bbf7d0; background: #f0fdf4; border-radius: 8px; padding: 14px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+    .vuelo-tag { background: #dcfce7; color: #166534; font-size: 11px; font-weight: 700; padding: 3px 8px; border-radius: 4px; display: inline-block; margin-bottom: 4px; }
+    .vuelo-info { font-size: 15px; font-weight: 800; color: #0f172a; }
+    .vuelo-precio { font-size: 22px; font-weight: 900; color: #15803d; text-align: right; }
+    .btn-ver { display: inline-block; background: #16a34a; color: white; text-decoration: none; font-size: 12px; font-weight: 700; padding: 6px 14px; border-radius: 6px; margin-top: 4px; }
+    .vacio { padding: 30px; text-align: center; color: #64748b; background: white; border-radius: 8px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>Radar de Vuelos Directos Suiza</h1>
+      <p>Catálogo centralizado clasificado por 3 aeropuertos y por cada ciudad</p>
+    </div>
+
+    <!-- Pestañas de las 3 carpetas -->
+    <div class="tabs">
+      <div class="tab-btn active" onclick="cambiarAeropuerto('BSL')">📁 Basilea (BSL) ({{ resumen.BSL }} vuelos)</div>
+      <div class="tab-btn" onclick="cambiarAeropuerto('GVA')">📁 Ginebra (GVA) ({{ resumen.GVA }} vuelos)</div>
+      <div class="tab-btn" onclick="cambiarAeropuerto('ZRH')">📁 Zúrich (ZRH) ({{ resumen.ZRH }} vuelos)</div>
+    </div>
+
+    <!-- Contenido de cada Aeropuerto -->
+    {% for aero_cod in ['BSL', 'GVA', 'ZRH'] %}
+      <div id="panel-{{ aero_cod }}" class="aeropuerto-content {% if aero_cod == 'BSL' %}active{% endif %}">
+        {% if vuelos_agrupados[aero_cod]|length == 0 %}
+          <div class="vacio">No hay vuelos guardados todavía para este aeropuerto. El rastreador lo irá llenando automáticamente.</div>
+        {% else %}
+          {% for ciudad_nom, lista_vuelos in vuelos_agrupados[aero_cod].items() %}
+            <div class="ciudad-card">
+              <div class="ciudad-header" onclick="toggleCiudad(this)">
+                <span>🏙️️ {{ ciudad_nom }}</span>
+                <span class="badge">{{ lista_vuelos|length }} opciones disponibles</span>
+              </div>
+              <div class="vuelos-list">
+                {% for v in lista_vuelos %}
+                  <div class="vuelo-item">
+                    <div>
+                      <span class="vuelo-tag">{{ v.duracion_dias }} DÍAS · {{ v.fechas }}</span>
+                      <div class="vuelo-info">🛫 {{ v.origen_nombre }} ➔ {{ v.destino_nombre }} ({{ v.destino_codigo }})</div>
+                      <div style="font-size:12px;color:#64748b;">Directo · Límite presupuestario: {{ v.presupuesto_max_chf }} CHF</div>
+                    </div>
+                    <div style="text-align: right;">
+                      <div class="vuelo-precio">{{ v.precio_chf }} CHF</div>
+                      <a href="{{ v.url }}" target="_blank" class="btn-ver">Ver Vuelo</a>
+                    </div>
+                  </div>
+                {% endfor %}
+              </div>
+            </div>
+          {% endfor %}
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <script>
+    function cambiarAeropuerto(cod) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.aeropuerto-content').forEach(p => p.classList.remove('active'));
+      event.target.classList.add('active');
+      document.getElementById('panel-' + cod).classList.add('active');
+    }
+
+    function toggleCiudad(elem) {
+      const lista = elem.nextElementSibling;
+      lista.classList.toggle('open');
+    }
+  </script>
+</body>
+</html>
+"""
 
 # ======================== SERVICIO HTTP ======================== #
 app = Flask(__name__)
 CORS(app)
+
+@app.route("/catalogo", methods=["GET"])
+def ver_catalogo_web():
+    historial = cargar_json_storage(ARCHIVO_HISTORIAL, [])
+    
+    # Agrupamos por Aeropuerto -> Ciudad
+    agrupado = {
+        "BSL": defaultdict(list),
+        "GVA": defaultdict(list),
+        "ZRH": defaultdict(list)
+    }
+    
+    resumen = {"BSL": 0, "GVA": 0, "ZRH": 0}
+    
+    for v in historial:
+        aero = v.get("origen_iata", "BSL")
+        ciudad = f"{v.get('destino_nombre', 'Destino')} ({v.get('destino_codigo', '')})"
+        if aero in agrupado:
+            agrupado[aero][ciudad].append(v)
+            resumen[aero] += 1
+
+    # Ordenamos vuelos por precio dentro de cada ciudad
+    for aero in agrupado:
+        for c in agrupado[aero]:
+            agrupado[aero][c].sort(key=lambda x: x.get("precio_chf", 999))
+
+    return render_template_string(PLANTILLA_PORTAL_HTML, vuelos_agrupados=agrupado, resumen=resumen)
 
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
 @app.route("/<path:path>", methods=["GET", "POST"])
@@ -573,7 +674,8 @@ def buscar_vuelos_fin_de_semana_http(request=None, path=""):
 
     correo_enviado = False
     if nuevos_reales:
-        correo_enviado = enviar_correo_alertas(nuevos_reales, historial, tarea)
+        url_portal = "https://agente-viajes-154469899823.europe-west1.run.app/catalogo"
+        correo_enviado = enviar_correo_alertas(nuevos_reales, historial, tarea, url_portal)
 
     guardar_json_storage(ARCHIVO_HISTORIAL, historial)
 
@@ -595,7 +697,8 @@ def buscar_vuelos_fin_de_semana_http(request=None, path=""):
         "correo_enviado": correo_enviado,
         "quedo_incompleta": incompleta,
         "duracion_segundos": round(time.time() - t0, 2),
-        "total_en_catalogo": len(historial)
+        "total_en_catalogo": len(historial),
+        "url_catalogo_completo": "https://agente-viajes-154469899823.europe-west1.run.app/catalogo"
     }), 200
 
 ejecutar_rastreo = buscar_vuelos_fin_de_semana_http
