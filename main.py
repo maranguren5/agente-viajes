@@ -283,7 +283,6 @@ def sincronizar_cola():
 def generar_combinaciones(dia_inicio=0, dias_a_cubrir=30):
     hoy = datetime.now()
     combs = []
-    # Límite estricto de 30 días vista
     for d in range(dia_inicio, min(dia_inicio + dias_a_cubrir, 30)):
         fecha_ida = hoy + timedelta(days=d)
         for dur in [1, 2, 3, 4]:
@@ -348,7 +347,6 @@ def rastrear_tarea_local(page, tarea, t_inicio):
         dur = c["duracion"]
         tope_chf = PRESUPUESTO_ESCALONADO_CHF.get(dur, 70.0)
 
-        # Si duracion es 1 dia, nos aseguramos de que Google Flights entienda ida y vuelta el mismo dia
         if dur == 1:
             url = f"https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20{origen}%20to%20{cod_dst}%20departing%20{ida}%20returning%20{ida}&hl=es-CH&gl=ch&curr=CHF"
         else:
@@ -411,7 +409,7 @@ def rastrear_tarea_local(page, tarea, t_inicio):
 
     return vuelos_nuevos, quedo_incompleta, dia_corte, metricas
 
-# ======================== ENVÍO DE EMAIL CON ENLACE AL PORTAL ======================== #
+# ======================== ENVÍO DE EMAIL CON MODALIDAD CLÁSICA ======================== #
 def enviar_correo_alertas(nuevos, historial_completo, tarea, url_portal):
     if not (SENDER_EMAIL and SENDER_PASSWORD and nuevos):
         return False
@@ -422,6 +420,7 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea, url_portal):
 
     asunto = f"✈️ [{origen}] Nuevos Chollos a {nom_ciudad} ({min_precio} CHF)"
 
+    # Tarjetas de las novedades de esta tanda
     bloques_novedades = ""
     for v in sorted(nuevos, key=lambda x: x["precio_chf"]):
         bloques_novedades += f"""
@@ -446,7 +445,29 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea, url_portal):
         </div>
         """
 
-    total_guardados = len(historial_completo)
+    # Conteo por aeropuerto
+    por_aeropuerto = defaultdict(list)
+    for v in historial_completo:
+        por_aeropuerto[v.get("origen_iata", "Otros")].append(v)
+
+    # Filas con enlaces a las carpetas correspondientes
+    filas_carpetas = ""
+    for aero in ORDEN_AEROPUERTOS:
+        cantidad = len(por_aeropuerto.get(aero, []))
+        url_carpeta = f"{url_portal}?aero={aero}"
+        filas_carpetas += f"""
+        <tr style="border-top:1px solid #e2e8f0;">
+          <td style="padding:10px 0;font-size:13px;color:#1e293b;font-weight:600;">
+            🛫 Salidas desde {NOMBRES_AEROPUERTOS.get(aero, aero)}
+            <div style="font-size:11px;color:#64748b;font-weight:normal;">({cantidad} chollos archivados)</div>
+          </td>
+          <td style="padding:10px 0;text-align:right;">
+            <a href="{url_carpeta}" style="display:inline-block;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;padding:6px 12px;border-radius:4px;">
+              📁 Abrir Carpeta
+            </a>
+          </td>
+        </tr>
+        """
 
     html = f"""
     <div style="max-width:640px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background-color:#f8fafc;padding:20px;color:#0f172a;">
@@ -456,18 +477,17 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea, url_portal):
       </div>
 
       <div style="background-color:#fff;padding:20px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
-        <h3 style="margin-top:0;font-size:14px;color:#16a34a;text-transform:uppercase;">🟢 Chollos Recién Detectados</h3>
+        <h3 style="margin-top:0;font-size:14px;color:#16a34a;text-transform:uppercase;">🟢 Chollos Recientes Detectados</h3>
         {bloques_novedades}
       </div>
 
-      <div style="background-color:#f1f5f9;padding:24px 20px;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;text-align:center;">
-        <h3 style="margin-top:0;font-size:15px;color:#1e293b;">📂 Catálogo Completo Interactivo ({total_guardados} vuelos guardados)</h3>
-        <p style="font-size:13px;color:#64748b;margin-bottom:18px;">
-          Entra a ver todas las carpetas organizadas por aeropuerto (Basilea, Ginebra, Zúrich) y navega por cada ciudad:
-        </p>
-        <a href="{url_portal}" style="display:inline-block;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:14px;font-weight:700;padding:12px 24px;border-radius:6px;box-shadow:0 2px 4px rgba(37,99,235,0.2);">
-          🚀 Abrir Catálogo Completo (3 Carpetas)
-        </a>
+      <div style="background-color:#f1f5f9;padding:20px;border:1px solid #e2e8f0;border-radius:0 0 8px 8px;">
+        <h3 style="margin-top:0;font-size:13px;color:#475569;text-transform:uppercase;">📁 Catálogo Activo por Aeropuerto de Salida</h3>
+        <div style="background-color:#fff;border:1px solid #e2e8f0;border-radius:8px;padding:12px;">
+          <table style="width:100%;border-collapse:collapse;">
+            {filas_carpetas}
+          </table>
+        </div>
       </div>
     </div>
     """
@@ -488,7 +508,7 @@ def enviar_correo_alertas(nuevos, historial_completo, tarea, url_portal):
         print(f"[Email Error] Error al despachar correo: {e}")
         return False
 
-# ======================== VISTA WEB: PORTAL CON 3 CARPETAS ======================== #
+# ======================== VISTA WEB: CARPETAS Y CIUDADES DESPLEGABLES ======================== #
 PLANTILLA_PORTAL_HTML = """
 <!DOCTYPE html>
 <html lang="es">
@@ -535,21 +555,21 @@ PLANTILLA_PORTAL_HTML = """
 
     <!-- Pestañas de las 3 carpetas -->
     <div class="tabs">
-      <div class="tab-btn active" onclick="cambiarAeropuerto('BSL')">📁 Basilea (BSL) ({{ resumen.BSL }} vuelos)</div>
-      <div class="tab-btn" onclick="cambiarAeropuerto('GVA')">📁 Ginebra (GVA) ({{ resumen.GVA }} vuelos)</div>
-      <div class="tab-btn" onclick="cambiarAeropuerto('ZRH')">📁 Zúrich (ZRH) ({{ resumen.ZRH }} vuelos)</div>
+      <div id="btn-BSL" class="tab-btn {% if aer_sel == 'BSL' %}active{% endif %}" onclick="cambiarAeropuerto('BSL')">📁 Basilea (BSL) ({{ resumen.BSL }} vuelos)</div>
+      <div id="btn-GVA" class="tab-btn {% if aer_sel == 'GVA' %}active{% endif %}" onclick="cambiarAeropuerto('GVA')">📁 Ginebra (GVA) ({{ resumen.GVA }} vuelos)</div>
+      <div id="btn-ZRH" class="tab-btn {% if aer_sel == 'ZRH' %}active{% endif %}" onclick="cambiarAeropuerto('ZRH')">📁 Zúrich (ZRH) ({{ resumen.ZRH }} vuelos)</div>
     </div>
 
     <!-- Contenido de cada Aeropuerto -->
     {% for aero_cod in ['BSL', 'GVA', 'ZRH'] %}
-      <div id="panel-{{ aero_cod }}" class="aeropuerto-content {% if aero_cod == 'BSL' %}active{% endif %}">
+      <div id="panel-{{ aero_cod }}" class="aeropuerto-content {% if aer_sel == aero_cod %}active{% endif %}">
         {% if vuelos_agrupados[aero_cod]|length == 0 %}
           <div class="vacio">No hay vuelos guardados todavía para este aeropuerto. El rastreador lo irá llenando automáticamente.</div>
         {% else %}
           {% for ciudad_nom, lista_vuelos in vuelos_agrupados[aero_cod].items() %}
             <div class="ciudad-card">
               <div class="ciudad-header" onclick="toggleCiudad(this)">
-                <span>🏙️️ {{ ciudad_nom }}</span>
+                <span>🏙 {{ ciudad_nom }}</span>
                 <span class="badge">{{ lista_vuelos|length }} opciones disponibles</span>
               </div>
               <div class="vuelos-list">
@@ -578,7 +598,7 @@ PLANTILLA_PORTAL_HTML = """
     function cambiarAeropuerto(cod) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.aeropuerto-content').forEach(p => p.classList.remove('active'));
-      event.target.classList.add('active');
+      document.getElementById('btn-' + cod).classList.add('active');
       document.getElementById('panel-' + cod).classList.add('active');
     }
 
@@ -597,9 +617,13 @@ CORS(app)
 
 @app.route("/catalogo", methods=["GET"])
 def ver_catalogo_web():
+    from flask import request
+    aer_sel = request.args.get("aero", "BSL")
+    if aer_sel not in ["BSL", "GVA", "ZRH"]:
+        aer_sel = "BSL"
+
     historial = cargar_json_storage(ARCHIVO_HISTORIAL, [])
     
-    # Agrupamos por Aeropuerto -> Ciudad
     agrupado = {
         "BSL": defaultdict(list),
         "GVA": defaultdict(list),
@@ -615,12 +639,11 @@ def ver_catalogo_web():
             agrupado[aero][ciudad].append(v)
             resumen[aero] += 1
 
-    # Ordenamos vuelos por precio dentro de cada ciudad
     for aero in agrupado:
         for c in agrupado[aero]:
             agrupado[aero][c].sort(key=lambda x: x.get("precio_chf", 999))
 
-    return render_template_string(PLANTILLA_PORTAL_HTML, vuelos_agrupados=agrupado, resumen=resumen)
+    return render_template_string(PLANTILLA_PORTAL_HTML, vuelos_agrupados=agrupado, resumen=resumen, aer_sel=aer_sel)
 
 @app.route("/", defaults={"path": ""}, methods=["GET", "POST"])
 @app.route("/<path:path>", methods=["GET", "POST"])
