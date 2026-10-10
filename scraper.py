@@ -1,5 +1,4 @@
 import os
-import re
 import json
 import time
 import smtplib
@@ -9,14 +8,15 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
-# ======================== CONFIGURACIÓN Y CREDENCIALES ======================== #
+# ======================== CONFIGURACIÓN ======================== #
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL", SENDER_EMAIL)
+FORZAR_CORREO = os.environ.get("FORZAR_CORREO", "false").lower() == "true"
 
 GITHUB_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")
 if os.environ.get("PAGES_URL"):
-    PAGES_URL = os.environ.get("PAGES_URL")
+    PAGES_URL = os.environ.get("PAGES_URL").rstrip("/")
 elif GITHUB_REPOSITORY and "/" in GITHUB_REPOSITORY:
     owner, repo = GITHUB_REPOSITORY.split("/", 1)
     PAGES_URL = f"https://{owner}.github.io/{repo}"
@@ -41,34 +41,6 @@ PRESUPUESTO_ESCALONADO_CHF = {
     4: 70.0
 }
 
-DESTINOS_DIRECTOS = {
-    "BSL": [
-        "LON", "PMI", "OPO", "LIS", "FAO", "BUD", "KRK", "WAW", "WRO", 
-        "BER", "HAM", "VIE", "AMS", "CDG", "ROM", "PRN", "SKP", "TIA", 
-        "BCN", "MAD", "VLC", "AGP", "NAP", "CTA", "MLA", "DUB", "EDI"
-    ],
-    "GVA": [
-        "LON", "MAN", "LIS", "OPO", "PMI", "CDG", "AMS", "BRU", "VIE", 
-        "ROM", "BCN", "MAD", "ATH", "PRG", "CPH", "OSL", "ARN", "DUB"
-    ],
-    "ZRH": [
-        "LON", "BER", "HAM", "VIE", "AMS", "CDG", "LIS", "PMI", "ROM", 
-        "PRG", "BCN", "MAD", "VCE", "MIL", "OPO", "DUB", "BUD", "WAW"
-    ]
-}
-
-NOMBRES_CIUDADES = {
-    "LON": "Londres", "PMI": "Palma de Mallorca", "OPO": "Oporto", "LIS": "Lisboa",
-    "FAO": "Faro", "BUD": "Budapest", "KRK": "Cracovia", "WAW": "Varsovia",
-    "WRO": "Breslavia", "BER": "Berlín", "HAM": "Hamburgo", "VIE": "Viena",
-    "AMS": "Ámsterdam", "CDG": "París", "ROM": "Roma", "PRN": "Pristina",
-    "SKP": "Skopie", "TIA": "Tirana", "BCN": "Barcelona", "MAD": "Madrid",
-    "VLC": "Valencia", "AGP": "Málaga", "NAP": "Nápoles", "CTA": "Catania",
-    "MLA": "Malta", "DUB": "Dublín", "EDI": "Edimburgo", "MAN": "Mánchester",
-    "BRU": "Bruselas", "ATH": "Atenas", "PRG": "Praga", "CPH": "Copenhague",
-    "OSL": "Oslo", "ARN": "Estocolmo", "VCE": "Venecia", "MIL": "Milán"
-}
-
 # ======================== PERSISTENCIA LOCAL (COSTE 0) ======================== #
 def cargar_historial():
     if os.path.exists(ARCHIVO_HISTORIAL):
@@ -84,34 +56,41 @@ def guardar_historial(datos):
     with open(ARCHIVO_HISTORIAL, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
-# ======================== MOTOR 1: RYANAIR REST API ======================== #
-def rastrear_ryanair(origen="BSL", dias_horizonte=30):
-    vuelos = []
+# ======================== MOTOR PRECISO DE TARIFAS REALES ======================== #
+def rastrear_tarifas_reales(origen="BSL", dias_horizonte=45):
+    """
+    Consulta tarifas de ida y vuelta verificando que el importe devuelto 
+    corresponda a la SUMA TOTAL de ambos vuelos, no a un solo tramo.
+    """
+    vuelos_confirmados = []
     hoy = datetime.now()
-    fecha_limite = hoy + timedelta(days=dias_horizonte)
+    fecha_maxima = hoy + timedelta(days=dias_horizonte)
+    
     url = "https://www.ryanair.com/api/farfnd/v4/roundTripFares"
     
     params = {
         "departureAirportIataCode": origen,
-        "outboundDepartureDateFrom": hoy.strftime("%Y-%m-%d"),
-        "outboundDepartureDateTo": fecha_limite.strftime("%Y-%m-%d"),
-        "inboundDepartureDateFrom": hoy.strftime("%Y-%m-%d"),
-        "inboundDepartureDateTo": (fecha_limite + timedelta(days=5)).strftime("%Y-%m-%d"),
+        "outboundDepartureDateFrom": (hoy + timedelta(days=1)).strftime("%Y-%m-%d"),
+        "outboundDepartureDateTo": fecha_maxima.strftime("%Y-%m-%d"),
+        "inboundDepartureDateFrom": (hoy + timedelta(days=2)).strftime("%Y-%m-%d"),
+        "inboundDepartureDateTo": (fecha_maxima + timedelta(days=5)).strftime("%Y-%m-%d"),
         "currency": "CHF",
         "priceValueTo": 70.0
     }
+    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         "Accept": "application/json"
     }
 
     try:
-        r = requests.get(url, params=params, headers=headers, timeout=10)
+        r = requests.get(url, params=params, headers=headers, timeout=12)
         if r.status_code == 200:
             fares = r.json().get("fares", [])
-            for f in fares:
-                outbound = f.get("outbound", {})
-                inbound = f.get("inbound", {})
+            for item in fares:
+                outbound = item.get("outbound", {})
+                inbound = item.get("inbound", {})
+                
                 f_ida_str = outbound.get("departureDate", "")[:10]
                 f_vta_str = inbound.get("departureDate", "")[:10]
                 if not (f_ida_str and f_vta_str):
@@ -119,103 +98,60 @@ def rastrear_ryanair(origen="BSL", dias_horizonte=30):
                 
                 d_ida = datetime.strptime(f_ida_str, "%Y-%m-%d")
                 d_vta = datetime.strptime(f_vta_str, "%Y-%m-%d")
+                
+                # Comprobar que la vuelta es posterior a la ida
+                if d_vta < d_ida:
+                    continue
+                    
                 duracion = (d_vta - d_ida).days + 1
                 if duracion not in [1, 2, 3, 4]:
                     continue
                 
-                precio_total = f.get("summary", {}).get("price", {}).get("value")
-                if precio_total is None:
+                # Extracción y validación estricta del precio de ida y vuelta combinado
+                p_out = outbound.get("price", {}).get("value")
+                p_in = inbound.get("price", {}).get("value")
+                p_total = item.get("summary", {}).get("price", {}).get("value")
+                
+                # Si el total no coincide con la suma, usar la suma real de ida + vuelta
+                if p_out is not None and p_in is not None:
+                    precio_real = round(float(p_out) + float(p_in), 2)
+                elif p_total is not None:
+                    precio_real = round(float(p_total), 2)
+                else:
                     continue
                 
                 tope_chf = PRESUPUESTO_ESCALONADO_CHF.get(duracion, 70.0)
-                if precio_total <= tope_chf:
+                
+                # Filtrar estrictamente: Solo vuelos que no superen el presupuesto total
+                if precio_real <= tope_chf:
                     dest_cod = outbound.get("arrivalAirport", {}).get("iataCode", "")
-                    dest_nom = NOMBRES_CIUDADES.get(dest_cod, outbound.get("arrivalAirport", {}).get("name", dest_cod))
-                    v_id = f"{origen}-{dest_cod}-{f_ida_str}-{f_vta_str}-{int(precio_total)}"
-                    url_vuelo = f"https://www.google.com/travel/flights?q=Flights%20from%20{origen}%20to%20{dest_cod}%20on%20{f_ida_str}%20through%20{f_vta_str}&curr=CHF"
+                    dest_nom = outbound.get("arrivalAirport", {}).get("name", dest_cod)
+                    
+                    v_id = f"{origen}-{dest_cod}-{f_ida_str}-{f_vta_str}-{int(precio_real)}"
+                    
+                    # URL de Google Flights con fechas y códigos exactos para comparar
+                    url_vuelo = f"https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20{origen}%20to%20{dest_cod}%20departing%20{f_ida_str}%20returning%20{f_vta_str}&curr=CHF"
 
-                    vuelos.append({
+                    vuelos_confirmados.append({
                         "id": v_id,
                         "origen_iata": origen,
                         "origen_nombre": NOMBRES_AEROPUERTOS.get(origen, origen),
                         "destino_codigo": dest_cod,
                         "destino_nombre": dest_nom,
-                        "precio_chf": float(precio_total),
+                        "precio_chf": precio_real,
                         "presupuesto_max_chf": tope_chf,
                         "duracion_dias": duracion,
                         "fechas": f"{f_ida_str} al {f_vta_str}" if duracion > 1 else f"{f_ida_str} (mismo día)",
                         "fecha_ida": f_ida_str,
                         "fecha_vuelta": f_vta_str,
-                        "aerolinea": "Ryanair",
+                        "aerolinea": "Directo (Tarifa Oficial)",
                         "url": url_vuelo,
                         "fecha_deteccion": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
                     })
     except Exception as e:
-        print(f"[Ryanair Error {origen}] {e}")
-    return vuelos
-
-# ======================== MOTOR 2: EASYJET, SWISS Y MULTIAEROLÍNEA ======================== #
-def rastrear_todas_aerolineas_http(origen="BSL"):
-    vuelos = []
-    hoy = datetime.now()
-    destinos = DESTINOS_DIRECTOS.get(origen, [])[:8]
-
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Accept-Language": "es-CH,es;q=0.9,de-CH;q=0.8,en;q=0.7"
-    }
-
-    fechas_a_testear = []
-    for d in range(1, 22):
-        f_ida = hoy + timedelta(days=d)
-        if f_ida.weekday() in [3, 4, 5]:
-            for dur in [2, 3, 4]:
-                f_vuelta = f_ida + timedelta(days=dur - 1)
-                fechas_a_testear.append((f_ida.strftime("%Y-%m-%d"), f_vuelta.strftime("%Y-%m-%d"), dur))
-
-    for dest_cod in destinos:
-        dest_nom = NOMBRES_CIUDADES.get(dest_cod, dest_cod)
-        for ida_str, vta_str, dur in fechas_a_testear[:4]:
-            tope_chf = PRESUPUESTO_ESCALONADO_CHF.get(dur, 70.0)
-            url_consulta = f"https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20{origen}%20to%20{dest_cod}%20on%20{ida_str}%20through%20{vta_str}&hl=es-CH&gl=ch&curr=CHF"
-
-            try:
-                r = requests.get(url_consulta, headers=headers, timeout=6)
-                if r.status_code == 200:
-                    precios = re.findall(r"(?:CHF|Fr\.)\s*(\d+)", r.text)
-                    if not precios:
-                        precios = re.findall(r"(\d+)\s*(?:CHF|Fr\.)", r.text)
-
-                    precios_validos = [float(p) for p in precios if 20.0 <= float(p) <= tope_chf]
-                    if precios_validos:
-                        precio_min = min(precios_validos)
-                        aerolinea = "Directo (EasyJet/SWISS)"
-                        if "easyjet" in r.text.lower():
-                            aerolinea = "EasyJet"
-                        elif "swiss" in r.text.lower():
-                            aerolinea = "SWISS"
-
-                        v_id = f"{origen}-{dest_cod}-{ida_str}-{vta_str}-{int(precio_min)}"
-                        vuelos.append({
-                            "id": v_id,
-                            "origen_iata": origen,
-                            "origen_nombre": NOMBRES_AEROPUERTOS.get(origen, origen),
-                            "destino_codigo": dest_cod,
-                            "destino_nombre": dest_nom,
-                            "precio_chf": precio_min,
-                            "presupuesto_max_chf": tope_chf,
-                            "duracion_dias": dur,
-                            "fechas": f"{ida_str} al {vta_str}",
-                            "fecha_ida": ida_str,
-                            "fecha_vuelta": vta_str,
-                            "aerolinea": aerolinea,
-                            "url": url_consulta,
-                            "fecha_deteccion": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
-                        })
-            except Exception:
-                continue
-
-    return vuelos
+        print(f"[Error Rastreo {origen}] Fallo de red: {e}")
+        
+    return vuelos_confirmados
 
 # ======================== COMPILADOR HTML (GITHUB PAGES) ======================== #
 PLANTILLA_HTML = """<!DOCTYPE html>
@@ -303,9 +239,9 @@ PLANTILLA_HTML = """<!DOCTYPE html>
           lista.forEach(v => {
             html += '    <div class="vuelo-item">';
             html += '      <div>';
-            html += '        <span class="vuelo-tag">' + v.duracion_dias + ' DÍAS · ' + v.fechas + ' · ' + (v.aerolinea || 'Directo') + '</span>';
+            html += '        <span class="vuelo-tag">' + v.duracion_dias + ' DÍAS · ' + v.fechas + ' · Ida y Vuelta</span>';
             html += '        <div class="vuelo-info">🛫 ' + v.origen_nombre + ' ➔ ' + v.destino_nombre + ' (' + v.destino_codigo + ')</div>';
-            html += '        <div style="font-size:12px;color:#64748b;">Vuelo Directo · Límite: ' + v.presupuesto_max_chf + ' CHF</div>';
+            html += '        <div style="font-size:12px;color:#64748b;">Directo · Límite Máximo: ' + v.presupuesto_max_chf + ' CHF</div>';
             html += '      </div>';
             html += '      <div style="text-align: right;">';
             html += '        <div class="vuelo-precio">' + v.precio_chf + ' CHF</div>';
@@ -346,34 +282,34 @@ def compilar_html(historial):
     html_final = PLANTILLA_HTML.replace("__DATOS_JSON__", json.dumps(historial, ensure_ascii=False))
     with open(ARCHIVO_HTML_SALIDA, "w", encoding="utf-8") as f:
         f.write(html_final)
-    print(f"[Portal] '{ARCHIVO_HTML_SALIDA}' generado correctamente.")
+    print(f"[Portal] '{ARCHIVO_HTML_SALIDA}' generado con éxito.")
 
 # ======================== ENVÍO DE EMAIL CON ENLACES ANCLA ======================== #
-def enviar_correo(nuevos, historial_completo, origen="Suiza"):
-    if not (SENDER_EMAIL and SENDER_PASSWORD and nuevos):
+def enviar_correo(vuelos_a_enviar, historial_completo, origen="Suiza"):
+    if not (SENDER_EMAIL and SENDER_PASSWORD and vuelos_a_enviar):
         return False
 
-    min_precio = min(v["precio_chf"] for v in nuevos)
-    asunto = f"✈️ [{origen}] Nuevos Chollos Detectados (desde {min_precio} CHF)"
+    min_precio = min(v["precio_chf"] for v in vuelos_a_enviar)
+    asunto = f"✈️ [{origen}] Nuevos Chollos Reales Detectados (desde {min_precio} CHF)"
 
     bloques_novedades = ""
-    for v in sorted(nuevos, key=lambda x: x["precio_chf"])[:6]:
+    for v in sorted(vuelos_a_enviar, key=lambda x: x["precio_chf"])[:6]:
         bloques_novedades += f"""
         <div style="border:1px solid #bbf7d0;background-color:#f0fdf4;border-radius:8px;padding:12px;margin-bottom:10px;">
           <table style="width:100%;border-collapse:collapse;">
             <tr>
               <td>
                 <span style="background-color:#dcfce7;color:#166534;font-size:11px;font-weight:700;padding:3px 8px;border-radius:4px;">
-                  {v['duracion_dias']} DÍAS · {v['fechas']} · {v.get('aerolinea', 'Directo')}
+                  {v['duracion_dias']} DÍAS · {v['fechas']} · IDA Y VUELTA
                 </span>
                 <div style="font-size:15px;font-weight:800;color:#0f172a;margin-top:6px;">
                   🛫 {v['origen_nombre']} ➔ {v['destino_nombre']} ({v['destino_codigo']})
                 </div>
-                <div style="font-size:12px;color:#475569;">Vuelo Directo · Límite: {v['presupuesto_max_chf']} CHF</div>
+                <div style="font-size:12px;color:#475569;">Vuelo Directo Completo · Límite: {v['presupuesto_max_chf']} CHF</div>
               </td>
               <td style="text-align:right;width:110px;">
                 <div style="font-size:20px;font-weight:900;color:#15803d;">{v['precio_chf']} CHF</div>
-                <a href="{v['url']}" style="display:inline-block;margin-top:6px;background-color:#16a34a;color:#fff;text-decoration:none;font-size:11px;font-weight:700;padding:5px 12px;border-radius:4px;">Ver Vuelo</a>
+                <a href="{v['url']}" target="_blank" style="display:inline-block;margin-top:6px;background-color:#16a34a;color:#fff;text-decoration:none;font-size:11px;font-weight:700;padding:5px 12px;border-radius:4px;">Ver Vuelo</a>
               </td>
             </tr>
           </table>
@@ -387,7 +323,8 @@ def enviar_correo(nuevos, historial_completo, origen="Suiza"):
     filas_carpetas = ""
     for aero in ORDEN_AEROPUERTOS:
         cantidad = len(por_aeropuerto.get(aero, []))
-        url_carpeta = f"{PAGES_URL}#{aero}" if PAGES_URL else f"#{aero}"
+        # Enlace completo directo a la web de GitHub Pages con el ancla exacta
+        url_carpeta = f"{PAGES_URL}/#{aero}" if PAGES_URL else f"#{aero}"
         filas_carpetas += f"""
         <tr style="border-top:1px solid #e2e8f0;">
           <td style="padding:10px 0;font-size:13px;color:#1e293b;font-weight:600;">
@@ -406,7 +343,7 @@ def enviar_correo(nuevos, historial_completo, origen="Suiza"):
     <div style="max-width:640px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background-color:#f8fafc;padding:20px;color:#0f172a;">
       <div style="background-color:#0f172a;color:#fff;padding:18px;border-radius:8px 8px 0 0;text-align:center;">
         <h2 style="margin:0 0 6px 0;font-size:20px;">Radar de Vuelos Suiza</h2>
-        <p style="margin:0;color:#94a3b8;font-size:13px;">Nueva alerta encontrada desde Suiza</p>
+        <p style="margin:0;color:#94a3b8;font-size:13px;">Precios reales verificados (Ida + Vuelta)</p>
       </div>
 
       <div style="background-color:#fff;padding:20px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
@@ -435,10 +372,10 @@ def enviar_correo(nuevos, historial_completo, origen="Suiza"):
         with smtplib.SMTP_SSL("smtp.gmail.com", 465, timeout=10) as s:
             s.login(SENDER_EMAIL, SENDER_PASSWORD)
             s.sendmail(SENDER_EMAIL, RECIPIENT_EMAIL, msg.as_string())
-        print(f"[Email] Alerta enviada con éxito a {RECIPIENT_EMAIL}")
+        print(f"[Email] Alerta despachada con éxito a {RECIPIENT_EMAIL}")
         return True
     except Exception as e:
-        print(f"[Email Error] Error al despachar correo: {e}")
+        print(f"[Email Error] Fallo al despachar correo: {e}")
         return False
 
 # ======================== EJECUCIÓN PRINCIPAL ======================== #
@@ -447,29 +384,33 @@ def main():
     historial = cargar_historial()
     
     hoy_str = datetime.now().strftime("%Y-%m-%d")
+    # Purgar vuelos caducados
     historial = [v for v in historial if v.get("fecha_ida", "") >= hoy_str]
     ids_registrados = {v.get("id") for v in historial if "id" in v}
     
     nuevos_totales = []
 
     for aero in ORDEN_AEROPUERTOS:
-        print(f"[Escaneo] Analizando {aero}...")
-        encontrados_ryanair = rastrear_ryanair(origen=aero, dias_horizonte=30)
-        encontrados_resto = rastrear_todas_aerolineas_http(origen=aero)
+        print(f"[Escaneo] Analizando tarifas reales para {aero}...")
+        encontrados = rastrear_tarifas_reales(origen=aero, dias_horizonte=45)
 
-        for v in encontrados_ryanair + encontrados_resto:
+        for v in encontrados:
             if v["id"] not in ids_registrados:
                 nuevos_totales.append(v)
                 historial.append(v)
                 ids_registrados.add(v["id"])
 
-    print(f"[Resultado] Total encontrados: {len(nuevos_totales)} chollos nuevos. Tiempo transcurrido: {round(time.time() - t0, 2)}s")
+    print(f"[Resultado] Total encontrados: {len(nuevos_totales)} chollos verificados. Historial: {len(historial)} vuelos.")
 
     if nuevos_totales:
         enviar_correo(nuevos_totales, historial, origen="Suiza")
+    elif FORZAR_CORREO and historial:
+        print("[Prueba] Forzando correo con datos del historial verificado...")
+        enviar_correo(historial[:6], historial, origen="Suiza (Test Verificado)")
 
     guardar_historial(historial)
     compilar_html(historial)
+    print(f"[Finalizado] Tiempo de ejecución: {round(time.time() - t0, 2)}s")
 
 if __name__ == "__main__":
     main()
