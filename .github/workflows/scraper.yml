@@ -2,7 +2,9 @@ name: Radar Vuelos Suiza (Coste Cero)
 
 on:
   schedule:
+    # Se ejecuta automáticamente cada 3 horas (8 veces al día)
     - cron: '0 */3 * * *'
+  # Permite ejecución manual desde la pestaña Actions
   workflow_dispatch:
 
 permissions:
