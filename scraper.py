@@ -8,7 +8,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
-# ======================== CONFIGURACIÓN ======================== #
+# ======================== CONFIGURACIÓN Y CREDENCIALES ======================== #
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL", SENDER_EMAIL)
@@ -56,7 +56,7 @@ def guardar_historial(datos):
     with open(ARCHIVO_HISTORIAL, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
-# ======================== MOTOR DE TARIFAS REALES ======================== #
+# ======================== MOTOR DE TARIFAS REALES CONFIRMADAS ======================== #
 def rastrear_tarifas_reales(origen="BSL", dias_horizonte=60):
     vuelos_confirmados = []
     hoy = datetime.now()
@@ -70,8 +70,7 @@ def rastrear_tarifas_reales(origen="BSL", dias_horizonte=60):
         "outboundDepartureDateTo": fecha_maxima.strftime("%Y-%m-%d"),
         "inboundDepartureDateFrom": (hoy + timedelta(days=3)).strftime("%Y-%m-%d"),
         "inboundDepartureDateTo": (fecha_maxima + timedelta(days=6)).strftime("%Y-%m-%d"),
-        "currency": "CHF",
-        "priceValueTo": 70.0
+        "currency": "CHF"
     }
     
     headers = {
@@ -102,24 +101,33 @@ def rastrear_tarifas_reales(origen="BSL", dias_horizonte=60):
                 if duracion not in [1, 2, 3, 4]:
                     continue
                 
-                p_ida = outbound.get("price", {}).get("value")
-                p_vta = inbound.get("price", {}).get("value")
+                p_ida_obj = outbound.get("price")
+                p_vta_obj = inbound.get("price")
                 
-                # OBLIGATORIO: Validar que existan ambos precios para evitar falsos positivos
+                if not p_ida_obj or not p_vta_obj:
+                    continue
+                
+                p_ida = p_ida_obj.get("value")
+                p_vta = p_vta_obj.get("value")
+                
                 if p_ida is None or p_vta is None:
                     continue
                 
-                precio_real = round(float(p_ida) + float(p_vta), 2)
+                # CALCULO MATEMATICO EXACTO: IDA + VUELTA REALES
+                p_ida_float = float(p_ida)
+                p_vta_float = float(p_vta)
+                precio_real = round(p_ida_float + p_vta_float, 2)
+                
                 tope_chf = PRESUPUESTO_ESCALONADO_CHF.get(duracion, 70.0)
                 
-                # Solo aceptar si la SUMA de ida y vuelta entra en el presupuesto
+                # Descartar si el precio total supera el tope
                 if precio_real <= tope_chf:
                     dest_cod = outbound.get("arrivalAirport", {}).get("iataCode", "")
                     dest_nom = outbound.get("arrivalAirport", {}).get("name", dest_cod)
                     
                     v_id = f"{origen}-{dest_cod}-{f_ida_str}-{f_vta_str}-{int(precio_real)}"
                     
-                    # Enlace directo de reserva con parámetros oficiales
+                    # URL oficial directa de Ryanair seleccionando origen, destino y fechas
                     url_vuelo = f"https://www.ryanair.com/es/es/trip/flights/select?originIata={origen}&destinationIata={dest_cod}&tpAdults=1&tpStartDate={f_ida_str}&tpEndDate={f_vta_str}&tpDiscountCode=&isReturn=true"
 
                     vuelos_confirmados.append({
@@ -128,8 +136,8 @@ def rastrear_tarifas_reales(origen="BSL", dias_horizonte=60):
                         "origen_nombre": NOMBRES_AEROPUERTOS.get(origen, origen),
                         "destino_codigo": dest_cod,
                         "destino_nombre": dest_nom,
-                        "precio_ida": round(float(p_ida), 2),
-                        "precio_vuelta": round(float(p_vta), 2),
+                        "precio_ida": round(p_ida_float, 2),
+                        "precio_vuelta": round(p_vta_float, 2),
                         "precio_chf": precio_real,
                         "presupuesto_max_chf": tope_chf,
                         "duracion_dias": duracion,
@@ -274,7 +282,7 @@ def compilar_html(historial):
     html_final = PLANTILLA_HTML.replace("__DATOS_JSON__", json.dumps(historial, ensure_ascii=False))
     with open(ARCHIVO_HTML_SALIDA, "w", encoding="utf-8") as f:
         f.write(html_final)
-    print(f"[Portal] '{ARCHIVO_HTML_SALIDA}' generado correctamente.")
+    print(f"[Portal] '{ARCHIVO_HTML_SALIDA}' generado con éxito.")
 
 # ======================== ENVÍO DE EMAIL CON DESGLOSE VERIFICADO ======================== #
 def enviar_correo(vuelos_a_enviar, historial_completo, origen="Suiza"):
@@ -298,7 +306,7 @@ def enviar_correo(vuelos_a_enviar, historial_completo, origen="Suiza"):
                   🛫 {v['origen_nombre']} ➔ {v['destino_nombre']} ({v['destino_codigo']})
                 </div>
                 <div style="font-size:12px;color:#475569;">
-                  Desglose: Ida {v['precio_ida']} CHF + Vuelta {v['precio_vuelta']} CHF (Límite: {v['presupuesto_max_chf']} CHF)
+                  Desglose Real: Ida {v['precio_ida']} CHF + Vuelta {v['precio_vuelta']} CHF (Límite: {v['presupuesto_max_chf']} CHF)
                 </div>
               </td>
               <td style="text-align:right;width:110px;">
