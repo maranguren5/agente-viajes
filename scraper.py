@@ -56,12 +56,8 @@ def guardar_historial(datos):
     with open(ARCHIVO_HISTORIAL, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
-# ======================== MOTOR PRECISO DE TARIFAS REALES ======================== #
-def rastrear_tarifas_reales(origen="BSL", dias_horizonte=45):
-    """
-    Consulta tarifas de ida y vuelta verificando que el importe devuelto 
-    corresponda a la SUMA TOTAL de ambos vuelos, no a un solo tramo.
-    """
+# ======================== MOTOR DE TARIFAS REALES ======================== #
+def rastrear_tarifas_reales(origen="BSL", dias_horizonte=60):
     vuelos_confirmados = []
     hoy = datetime.now()
     fecha_maxima = hoy + timedelta(days=dias_horizonte)
@@ -70,10 +66,10 @@ def rastrear_tarifas_reales(origen="BSL", dias_horizonte=45):
     
     params = {
         "departureAirportIataCode": origen,
-        "outboundDepartureDateFrom": (hoy + timedelta(days=1)).strftime("%Y-%m-%d"),
+        "outboundDepartureDateFrom": (hoy + timedelta(days=2)).strftime("%Y-%m-%d"),
         "outboundDepartureDateTo": fecha_maxima.strftime("%Y-%m-%d"),
-        "inboundDepartureDateFrom": (hoy + timedelta(days=2)).strftime("%Y-%m-%d"),
-        "inboundDepartureDateTo": (fecha_maxima + timedelta(days=5)).strftime("%Y-%m-%d"),
+        "inboundDepartureDateFrom": (hoy + timedelta(days=3)).strftime("%Y-%m-%d"),
+        "inboundDepartureDateTo": (fecha_maxima + timedelta(days=6)).strftime("%Y-%m-%d"),
         "currency": "CHF",
         "priceValueTo": 70.0
     }
@@ -99,7 +95,6 @@ def rastrear_tarifas_reales(origen="BSL", dias_horizonte=45):
                 d_ida = datetime.strptime(f_ida_str, "%Y-%m-%d")
                 d_vta = datetime.strptime(f_vta_str, "%Y-%m-%d")
                 
-                # Comprobar que la vuelta es posterior a la ida
                 if d_vta < d_ida:
                     continue
                     
@@ -107,30 +102,25 @@ def rastrear_tarifas_reales(origen="BSL", dias_horizonte=45):
                 if duracion not in [1, 2, 3, 4]:
                     continue
                 
-                # Extracción y validación estricta del precio de ida y vuelta combinado
-                p_out = outbound.get("price", {}).get("value")
-                p_in = inbound.get("price", {}).get("value")
-                p_total = item.get("summary", {}).get("price", {}).get("value")
+                p_ida = outbound.get("price", {}).get("value")
+                p_vta = inbound.get("price", {}).get("value")
                 
-                # Si el total no coincide con la suma, usar la suma real de ida + vuelta
-                if p_out is not None and p_in is not None:
-                    precio_real = round(float(p_out) + float(p_in), 2)
-                elif p_total is not None:
-                    precio_real = round(float(p_total), 2)
-                else:
+                # OBLIGATORIO: Validar que existan ambos precios para evitar falsos positivos
+                if p_ida is None or p_vta is None:
                     continue
                 
+                precio_real = round(float(p_ida) + float(p_vta), 2)
                 tope_chf = PRESUPUESTO_ESCALONADO_CHF.get(duracion, 70.0)
                 
-                # Filtrar estrictamente: Solo vuelos que no superen el presupuesto total
+                # Solo aceptar si la SUMA de ida y vuelta entra en el presupuesto
                 if precio_real <= tope_chf:
                     dest_cod = outbound.get("arrivalAirport", {}).get("iataCode", "")
                     dest_nom = outbound.get("arrivalAirport", {}).get("name", dest_cod)
                     
                     v_id = f"{origen}-{dest_cod}-{f_ida_str}-{f_vta_str}-{int(precio_real)}"
                     
-                    # URL de Google Flights con fechas y códigos exactos para comparar
-                    url_vuelo = f"https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20{origen}%20to%20{dest_cod}%20departing%20{f_ida_str}%20returning%20{f_vta_str}&curr=CHF"
+                    # Enlace directo de reserva con parámetros oficiales
+                    url_vuelo = f"https://www.ryanair.com/es/es/trip/flights/select?originIata={origen}&destinationIata={dest_cod}&tpAdults=1&tpStartDate={f_ida_str}&tpEndDate={f_vta_str}&tpDiscountCode=&isReturn=true"
 
                     vuelos_confirmados.append({
                         "id": v_id,
@@ -138,18 +128,20 @@ def rastrear_tarifas_reales(origen="BSL", dias_horizonte=45):
                         "origen_nombre": NOMBRES_AEROPUERTOS.get(origen, origen),
                         "destino_codigo": dest_cod,
                         "destino_nombre": dest_nom,
+                        "precio_ida": round(float(p_ida), 2),
+                        "precio_vuelta": round(float(p_vta), 2),
                         "precio_chf": precio_real,
                         "presupuesto_max_chf": tope_chf,
                         "duracion_dias": duracion,
                         "fechas": f"{f_ida_str} al {f_vta_str}" if duracion > 1 else f"{f_ida_str} (mismo día)",
                         "fecha_ida": f_ida_str,
                         "fecha_vuelta": f_vta_str,
-                        "aerolinea": "Directo (Tarifa Oficial)",
+                        "aerolinea": "Ryanair",
                         "url": url_vuelo,
                         "fecha_deteccion": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
                     })
     except Exception as e:
-        print(f"[Error Rastreo {origen}] Fallo de red: {e}")
+        print(f"[Error Rastreo {origen}] {e}")
         
     return vuelos_confirmados
 
@@ -239,9 +231,9 @@ PLANTILLA_HTML = """<!DOCTYPE html>
           lista.forEach(v => {
             html += '    <div class="vuelo-item">';
             html += '      <div>';
-            html += '        <span class="vuelo-tag">' + v.duracion_dias + ' DÍAS · ' + v.fechas + ' · Ida y Vuelta</span>';
+            html += '        <span class="vuelo-tag">' + v.duracion_dias + ' DÍAS · ' + v.fechas + ' · Ida (' + v.precio_ida + ' CHF) + Vuelta (' + v.precio_vuelta + ' CHF)</span>';
             html += '        <div class="vuelo-info">🛫 ' + v.origen_nombre + ' ➔ ' + v.destino_nombre + ' (' + v.destino_codigo + ')</div>';
-            html += '        <div style="font-size:12px;color:#64748b;">Directo · Límite Máximo: ' + v.presupuesto_max_chf + ' CHF</div>';
+            html += '        <div style="font-size:12px;color:#64748b;">Directo Oficial · Límite: ' + v.presupuesto_max_chf + ' CHF</div>';
             html += '      </div>';
             html += '      <div style="text-align: right;">';
             html += '        <div class="vuelo-precio">' + v.precio_chf + ' CHF</div>';
@@ -282,15 +274,15 @@ def compilar_html(historial):
     html_final = PLANTILLA_HTML.replace("__DATOS_JSON__", json.dumps(historial, ensure_ascii=False))
     with open(ARCHIVO_HTML_SALIDA, "w", encoding="utf-8") as f:
         f.write(html_final)
-    print(f"[Portal] '{ARCHIVO_HTML_SALIDA}' generado con éxito.")
+    print(f"[Portal] '{ARCHIVO_HTML_SALIDA}' generado correctamente.")
 
-# ======================== ENVÍO DE EMAIL CON ENLACES ANCLA ======================== #
+# ======================== ENVÍO DE EMAIL CON DESGLOSE VERIFICADO ======================== #
 def enviar_correo(vuelos_a_enviar, historial_completo, origen="Suiza"):
     if not (SENDER_EMAIL and SENDER_PASSWORD and vuelos_a_enviar):
         return False
 
     min_precio = min(v["precio_chf"] for v in vuelos_a_enviar)
-    asunto = f"✈️ [{origen}] Nuevos Chollos Reales Detectados (desde {min_precio} CHF)"
+    asunto = f"✈️ [{origen}] Nuevos Chollos Reales (Ida + Vuelta desde {min_precio} CHF)"
 
     bloques_novedades = ""
     for v in sorted(vuelos_a_enviar, key=lambda x: x["precio_chf"])[:6]:
@@ -305,7 +297,9 @@ def enviar_correo(vuelos_a_enviar, historial_completo, origen="Suiza"):
                 <div style="font-size:15px;font-weight:800;color:#0f172a;margin-top:6px;">
                   🛫 {v['origen_nombre']} ➔ {v['destino_nombre']} ({v['destino_codigo']})
                 </div>
-                <div style="font-size:12px;color:#475569;">Vuelo Directo Completo · Límite: {v['presupuesto_max_chf']} CHF</div>
+                <div style="font-size:12px;color:#475569;">
+                  Desglose: Ida {v['precio_ida']} CHF + Vuelta {v['precio_vuelta']} CHF (Límite: {v['presupuesto_max_chf']} CHF)
+                </div>
               </td>
               <td style="text-align:right;width:110px;">
                 <div style="font-size:20px;font-weight:900;color:#15803d;">{v['precio_chf']} CHF</div>
@@ -323,7 +317,6 @@ def enviar_correo(vuelos_a_enviar, historial_completo, origen="Suiza"):
     filas_carpetas = ""
     for aero in ORDEN_AEROPUERTOS:
         cantidad = len(por_aeropuerto.get(aero, []))
-        # Enlace completo directo a la web de GitHub Pages con el ancla exacta
         url_carpeta = f"{PAGES_URL}/#{aero}" if PAGES_URL else f"#{aero}"
         filas_carpetas += f"""
         <tr style="border-top:1px solid #e2e8f0;">
@@ -343,7 +336,7 @@ def enviar_correo(vuelos_a_enviar, historial_completo, origen="Suiza"):
     <div style="max-width:640px;margin:0 auto;font-family:-apple-system,BlinkMacSystemFont,sans-serif;background-color:#f8fafc;padding:20px;color:#0f172a;">
       <div style="background-color:#0f172a;color:#fff;padding:18px;border-radius:8px 8px 0 0;text-align:center;">
         <h2 style="margin:0 0 6px 0;font-size:20px;">Radar de Vuelos Suiza</h2>
-        <p style="margin:0;color:#94a3b8;font-size:13px;">Precios reales verificados (Ida + Vuelta)</p>
+        <p style="margin:0;color:#94a3b8;font-size:13px;">Precios reales confirmados (Ida + Vuelta completa)</p>
       </div>
 
       <div style="background-color:#fff;padding:20px;border-left:1px solid #e2e8f0;border-right:1px solid #e2e8f0;">
@@ -384,15 +377,14 @@ def main():
     historial = cargar_historial()
     
     hoy_str = datetime.now().strftime("%Y-%m-%d")
-    # Purgar vuelos caducados
     historial = [v for v in historial if v.get("fecha_ida", "") >= hoy_str]
     ids_registrados = {v.get("id") for v in historial if "id" in v}
     
     nuevos_totales = []
 
     for aero in ORDEN_AEROPUERTOS:
-        print(f"[Escaneo] Analizando tarifas reales para {aero}...")
-        encontrados = rastrear_tarifas_reales(origen=aero, dias_horizonte=45)
+        print(f"[Escaneo] Verificando tarifas ida + vuelta para {aero}...")
+        encontrados = rastrear_tarifas_reales(origen=aero, dias_horizonte=60)
 
         for v in encontrados:
             if v["id"] not in ids_registrados:
@@ -400,12 +392,12 @@ def main():
                 historial.append(v)
                 ids_registrados.add(v["id"])
 
-    print(f"[Resultado] Total encontrados: {len(nuevos_totales)} chollos verificados. Historial: {len(historial)} vuelos.")
+    print(f"[Resultado] Total detectados: {len(nuevos_totales)} chollos verificados. Historial: {len(historial)} vuelos.")
 
     if nuevos_totales:
         enviar_correo(nuevos_totales, historial, origen="Suiza")
     elif FORZAR_CORREO and historial:
-        print("[Prueba] Forzando correo con datos del historial verificado...")
+        print("[Prueba] Forzando correo con vuelos reales verificados...")
         enviar_correo(historial[:6], historial, origen="Suiza (Test Verificado)")
 
     guardar_historial(historial)
