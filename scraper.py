@@ -9,11 +9,19 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
-# ======================== CONFIGURACIÓN ======================== #
+# ======================== CONFIGURACIÓN Y CREDENCIALES ======================== #
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL", SENDER_EMAIL)
-PAGES_URL = os.environ.get("PAGES_URL", "")
+
+GITHUB_REPOSITORY = os.environ.get("GITHUB_REPOSITORY", "")
+if os.environ.get("PAGES_URL"):
+    PAGES_URL = os.environ.get("PAGES_URL")
+elif GITHUB_REPOSITORY and "/" in GITHUB_REPOSITORY:
+    owner, repo = GITHUB_REPOSITORY.split("/", 1)
+    PAGES_URL = f"https://{owner}.github.io/{repo}"
+else:
+    PAGES_URL = ""
 
 DIR_DATA = "data"
 ARCHIVO_HISTORIAL = os.path.join(DIR_DATA, "historial_vuelos.json")
@@ -76,7 +84,7 @@ def guardar_historial(datos):
     with open(ARCHIVO_HISTORIAL, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
-# ======================== ENDPOINT AUTOMÁTICO 1: RYANAIR ======================== #
+# ======================== MOTOR 1: RYANAIR REST API ======================== #
 def rastrear_ryanair(origen="BSL", dias_horizonte=30):
     vuelos = []
     hoy = datetime.now()
@@ -146,7 +154,7 @@ def rastrear_ryanair(origen="BSL", dias_horizonte=30):
         print(f"[Ryanair Error {origen}] {e}")
     return vuelos
 
-# ======================== ENDPOINT AUTOMÁTICO 2: AGREGADOR HTTP ======================== #
+# ======================== MOTOR 2: EASYJET, SWISS Y MULTIAEROLÍNEA ======================== #
 def rastrear_todas_aerolineas_http(origen="BSL"):
     vuelos = []
     hoy = datetime.now()
@@ -340,7 +348,7 @@ def compilar_html(historial):
         f.write(html_final)
     print(f"[Portal] '{ARCHIVO_HTML_SALIDA}' generado correctamente.")
 
-# ======================== ENVÍO DE EMAIL ======================== #
+# ======================== ENVÍO DE EMAIL CON ENLACES ANCLA ======================== #
 def enviar_correo(nuevos, historial_completo, origen="Suiza"):
     if not (SENDER_EMAIL and SENDER_PASSWORD and nuevos):
         return False
@@ -387,7 +395,7 @@ def enviar_correo(nuevos, historial_completo, origen="Suiza"):
             <div style="font-size:11px;color:#64748b;font-weight:normal;">({cantidad} chollos archivados)</div>
           </td>
           <td style="padding:10px 0;text-align:right;">
-            <a href="{url_carpeta}" style="display:inline-block;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;padding:6px 12px;border-radius:4px;">
+            <a href="{url_carpeta}" target="_blank" style="display:inline-block;background-color:#2563eb;color:#ffffff;text-decoration:none;font-size:11px;font-weight:700;padding:6px 12px;border-radius:4px;">
               📁 Abrir Carpeta
             </a>
           </td>
