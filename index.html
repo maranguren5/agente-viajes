@@ -83,9 +83,9 @@
           lista.forEach(v => {
             html += '    <div class="vuelo-item">';
             html += '      <div>';
-            html += '        <span class="vuelo-tag">' + v.duracion_dias + ' DÍAS · ' + v.fechas + ' · ' + (v.aerolinea || 'Directo') + '</span>';
+            html += '        <span class="vuelo-tag">' + v.duracion_dias + ' DÍAS · ' + v.fechas + ' · Ida (' + v.precio_ida + ' CHF) + Vuelta (' + v.precio_vuelta + ' CHF)</span>';
             html += '        <div class="vuelo-info">🛫 ' + v.origen_nombre + ' ➔ ' + v.destino_nombre + ' (' + v.destino_codigo + ')</div>';
-            html += '        <div style="font-size:12px;color:#64748b;">Vuelo Directo · Límite: ' + v.presupuesto_max_chf + ' CHF</div>';
+            html += '        <div style="font-size:12px;color:#64748b;">Directo Oficial · Límite: ' + v.presupuesto_max_chf + ' CHF</div>';
             html += '      </div>';
             html += '      <div style="text-align: right;">';
             html += '        <div class="vuelo-precio">' + v.precio_chf + ' CHF</div>';
