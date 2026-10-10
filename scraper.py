@@ -9,7 +9,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
-# ======================== CONFIGURACIÓN Y CREDENCIALES ======================== #
+# ======================== CONFIGURACIÓN ======================== #
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL", SENDER_EMAIL)
@@ -33,7 +33,6 @@ PRESUPUESTO_ESCALONADO_CHF = {
     4: 70.0
 }
 
-# Destinos directos clave agrupados por aeropuerto
 DESTINOS_DIRECTOS = {
     "BSL": [
         "LON", "PMI", "OPO", "LIS", "FAO", "BUD", "KRK", "WAW", "WRO", 
@@ -77,7 +76,7 @@ def guardar_historial(datos):
     with open(ARCHIVO_HISTORIAL, "w", encoding="utf-8") as f:
         json.dump(datos, f, ensure_ascii=False, indent=2)
 
-# ======================== MOTOR 1: RYANAIR REST API ======================== #
+# ======================== ENDPOINT AUTOMÁTICO 1: RYANAIR ======================== #
 def rastrear_ryanair(origen="BSL", dias_horizonte=30):
     vuelos = []
     hoy = datetime.now()
@@ -147,26 +146,20 @@ def rastrear_ryanair(origen="BSL", dias_horizonte=30):
         print(f"[Ryanair Error {origen}] {e}")
     return vuelos
 
-# ======================== MOTOR 2: EASYJET Y OTRAS AEROLÍNEAS ======================== #
+# ======================== ENDPOINT AUTOMÁTICO 2: AGREGADOR HTTP ======================== #
 def rastrear_todas_aerolineas_http(origen="BSL"):
-    """
-    Rastrea vuelos directos de EasyJet, SWISS y otras aerolíneas consultando
-    los calendarios de Google Flights en lotes rápidos (sin Playwright).
-    """
     vuelos = []
     hoy = datetime.now()
-    destinos = DESTINOS_DIRECTOS.get(origen, [])[:8]  # Lote prioritario rotativo
+    destinos = DESTINOS_DIRECTOS.get(origen, [])[:8]
 
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
         "Accept-Language": "es-CH,es;q=0.9,de-CH;q=0.8,en;q=0.7"
     }
 
-    # Búsqueda por ventanas clave (fines de semana de 2, 3 y 4 días en los próximos 21 días)
     fechas_a_testear = []
     for d in range(1, 22):
         f_ida = hoy + timedelta(days=d)
-        # Priorizar salidas en jueves, viernes o sábado
         if f_ida.weekday() in [3, 4, 5]:
             for dur in [2, 3, 4]:
                 f_vuelta = f_ida + timedelta(days=dur - 1)
@@ -179,10 +172,8 @@ def rastrear_todas_aerolineas_http(origen="BSL"):
             url_consulta = f"https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20{origen}%20to%20{dest_cod}%20on%20{ida_str}%20through%20{vta_str}&hl=es-CH&gl=ch&curr=CHF"
 
             try:
-                # Petición HTTP rápida sin descargar navegador pesado
                 r = requests.get(url_consulta, headers=headers, timeout=6)
                 if r.status_code == 200:
-                    # Detección de precios directos en el payload HTML/JSON
                     precios = re.findall(r"(?:CHF|Fr\.)\s*(\d+)", r.text)
                     if not precios:
                         precios = re.findall(r"(\d+)\s*(?:CHF|Fr\.)", r.text)
@@ -190,8 +181,6 @@ def rastrear_todas_aerolineas_http(origen="BSL"):
                     precios_validos = [float(p) for p in precios if 20.0 <= float(p) <= tope_chf]
                     if precios_validos:
                         precio_min = min(precios_validos)
-                        
-                        # Identificar aerolínea
                         aerolinea = "Directo (EasyJet/SWISS)"
                         if "easyjet" in r.text.lower():
                             aerolinea = "EasyJet"
@@ -449,7 +438,6 @@ def main():
     t0 = time.time()
     historial = cargar_historial()
     
-    # Purgar vuelos cuya fecha de ida ya haya pasado
     hoy_str = datetime.now().strftime("%Y-%m-%d")
     historial = [v for v in historial if v.get("fecha_ida", "") >= hoy_str]
     ids_registrados = {v.get("id") for v in historial if "id" in v}
@@ -458,11 +446,7 @@ def main():
 
     for aero in ORDEN_AEROPUERTOS:
         print(f"[Escaneo] Analizando {aero}...")
-        
-        # 1. Ryanair (REST Instantáneo)
         encontrados_ryanair = rastrear_ryanair(origen=aero, dias_horizonte=30)
-        
-        # 2. EasyJet, SWISS y resto de aerolíneas (HTTP por lotes)
         encontrados_resto = rastrear_todas_aerolineas_http(origen=aero)
 
         for v in encontrados_ryanair + encontrados_resto:
