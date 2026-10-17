@@ -1,37 +1,5 @@
 [
   {
-    "id": "BSL-BUD-2026-10-16-2026-10-17-25",
-    "origen_iata": "BSL",
-    "origen_nombre": "Basilea (BSL)",
-    "destino_codigo": "BUD",
-    "destino_nombre": "Budapest",
-    "precio_chf": 25.0,
-    "presupuesto_max_chf": 45.0,
-    "duracion_dias": 2,
-    "fechas": "2026-10-16 al 2026-10-17",
-    "fecha_ida": "2026-10-16",
-    "fecha_vuelta": "2026-10-17",
-    "aerolinea": "EasyJet",
-    "url": "https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20BSL%20to%20BUD%20on%202026-10-16%20through%202026-10-17&hl=es-CH&gl=ch&curr=CHF",
-    "fecha_deteccion": "2026-10-10 18:13:58 UTC"
-  },
-  {
-    "id": "GVA-OPO-2026-10-16-2026-10-17-25",
-    "origen_iata": "GVA",
-    "origen_nombre": "Ginebra (GVA)",
-    "destino_codigo": "OPO",
-    "destino_nombre": "Oporto",
-    "precio_chf": 25.0,
-    "presupuesto_max_chf": 45.0,
-    "duracion_dias": 2,
-    "fechas": "2026-10-16 al 2026-10-17",
-    "fecha_ida": "2026-10-16",
-    "fecha_vuelta": "2026-10-17",
-    "aerolinea": "EasyJet",
-    "url": "https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20GVA%20to%20OPO%20on%202026-10-16%20through%202026-10-17&hl=es-CH&gl=ch&curr=CHF",
-    "fecha_deteccion": "2026-10-10 18:14:14 UTC"
-  },
-  {
     "id": "BSL-ZAG-2026-11-21-2026-11-22-27",
     "origen_iata": "BSL",
     "origen_nombre": "Basilea (BSL)",
