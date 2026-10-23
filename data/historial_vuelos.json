@@ -88,5 +88,23 @@
     "aerolinea": "Ryanair",
     "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=STN&tpAdults=1&tpStartDate=2026-11-04&tpEndDate=2026-11-06&tpDiscountCode=&isReturn=true",
     "fecha_deteccion": "2026-10-21 03:25:32 UTC"
+  },
+  {
+    "id": "BSL-STN-2026-11-04-2026-11-06-33",
+    "origen_iata": "BSL",
+    "origen_nombre": "Basilea (BSL)",
+    "destino_codigo": "STN",
+    "destino_nombre": "London Stansted",
+    "precio_ida": 17.42,
+    "precio_vuelta": 16.0,
+    "precio_chf": 33.42,
+    "presupuesto_max_chf": 55.0,
+    "duracion_dias": 3,
+    "fechas": "2026-11-04 al 2026-11-06",
+    "fecha_ida": "2026-11-04",
+    "fecha_vuelta": "2026-11-06",
+    "aerolinea": "Ryanair",
+    "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=STN&tpAdults=1&tpStartDate=2026-11-04&tpEndDate=2026-11-06&tpDiscountCode=&isReturn=true",
+    "fecha_deteccion": "2026-10-23 18:26:15 UTC"
   }
 ]
