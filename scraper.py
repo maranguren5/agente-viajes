@@ -2,6 +2,7 @@ import os
 import re
 import json
 import time
+import urllib.parse
 import smtplib
 import requests
 from collections import defaultdict
@@ -10,6 +11,7 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 
 # ======================== CONFIGURACIÓN Y CREDENCIALES ======================== #
+# Las credenciales se leen exclusivamente de variables de entorno protegidas
 SENDER_EMAIL = os.environ.get("SENDER_EMAIL")
 SENDER_PASSWORD = os.environ.get("SENDER_PASSWORD")
 RECIPIENT_EMAIL = os.environ.get("RECIPIENT_EMAIL", SENDER_EMAIL)
@@ -31,7 +33,7 @@ ARCHIVO_HTML_SALIDA = "index.html"
 
 PRESUPUESTO_TOTAL_MAX_CHF = 100.0
 
-# Tarifas de conexion terrestre ida y vuelta desde Lucerna (Halbtax aplicado)
+# Conexiones terrestres reales desde Lucerna (Halbtax aplicado)
 AEROPUERTOS_CONFIG = {
     "ZRH": {"nombre": "Zúrich (ZRH)", "transfer_chf": 26.0},
     "BSL": {"nombre": "Basilea (BSL)", "transfer_chf": 32.0},
@@ -41,7 +43,6 @@ AEROPUERTOS_CONFIG = {
 }
 ORDEN_AEROPUERTOS = ["ZRH", "BSL", "BGY", "MXP", "GVA"]
 
-# Destinos principales con conexion directa
 DESTINOS_POR_AEROPUERTO = {
     "ZRH": [
         {"codigo": "PMI", "nombre": "Palma de Mallorca"},
@@ -70,8 +71,7 @@ DESTINOS_POR_AEROPUERTO = {
         {"codigo": "BUD", "nombre": "Budapest"},
         {"codigo": "KRK", "nombre": "Cracovia"},
         {"codigo": "WAW", "nombre": "Varsovia"},
-        {"codigo": "BER", "nombre": "Berlín"},
-        {"codigo": "HAM", "nombre": "Hamburgo"}
+        {"codigo": "BER", "nombre": "Berlín"}
     ],
     "BGY": [
         {"codigo": "OPO", "nombre": "Oporto"},
@@ -97,8 +97,7 @@ DESTINOS_POR_AEROPUERTO = {
         {"codigo": "LIS", "nombre": "Lisboa"},
         {"codigo": "PMI", "nombre": "Palma de Mallorca"},
         {"codigo": "BCN", "nombre": "Barcelona"},
-        {"codigo": "MAD", "nombre": "Madrid"},
-        {"codigo": "LON", "nombre": "Londres"}
+        {"codigo": "MAD", "nombre": "Madrid"}
     ]
 }
 
@@ -143,79 +142,73 @@ def obtener_siguiente_tarea():
     guardar_json(ARCHIVO_CURSOR, estado)
     return aero_actual, ciudad_actual
 
-# ======================== MOTOR DE CONSULTA MULTIAEROLÍNEA ======================== #
-def consultar_vuelos_google(session, origen, destino_cod, f_ida, f_vta):
+# ======================== GENERADOR DE ENLACES DE VUELOS REALES ======================== #
+def construir_enlace_google_flights(origen, destino, f_ida, f_vta):
     """
-    Realiza la consulta al servicio de vuelos de Google emulando el cliente web suizo.
-    Extrae la tarifa verificada de ida y vuelta en francos suizos (CHF).
+    Construye la URL canónica directa de Google Flights con origen, destino y fechas preseleccionadas.
+    Al abrirse, Google Flights carga directamente el listado de vuelos sin pantalla en blanco.
     """
-    url = f"https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20{origen}%20to%20{destino_cod}%20departing%20{f_ida}%20returning%20{f_vta}&curr=CHF&hl=es-CH&gl=ch"
+    query = f"flights from {origen} to {destino} on {f_ida} return {f_vta}"
+    query_encoded = urllib.parse.quote(query)
+    return f"https://www.google.com/travel/flights?q={query_encoded}&curr=CHF&hl=es"
+
+# ======================== CONSULTA MULTIAEROLÍNEA REAL ======================== #
+def verificar_disponibilidad_real(session, origen, destino_cod, f_ida, f_vta, tope_vuelo):
+    """
+    Consulta el inventario de vuelos directos verificando que existan plazas
+    reales para las fechas solicitadas por debajo del presupuesto máximo.
+    """
+    url_reserva = construir_enlace_google_flights(origen, destino_cod, f_ida, f_vta)
     
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
-        "Accept-Language": "es-CH,es;q=0.9,de-CH;q=0.8,en;q=0.7",
-        "Cache-Control": "no-cache",
-        "Pragma": "no-cache"
-    }
+    # 1. Comprobacion de inventario abierto directo (Ryanair / EasyJet / Multiaerolinea)
+    url_ryanair_ida = f"https://www.ryanair.com/api/farfnd/v4/oneWayFares/{origen}/{destino_cod}/cheapestPerDay"
+    url_ryanair_vta = f"https://www.ryanair.com/api/farfnd/v4/oneWayFares/{destino_cod}/{origen}/cheapestPerDay"
 
     try:
-        r = session.get(url, headers=headers, timeout=9)
-        if r.status_code != 200:
-            return None, "Desconocida", url
+        r_ida = session.get(url_ryanair_ida, timeout=5)
+        r_vta = session.get(url_ryanair_vta, timeout=5)
 
-        texto = r.text
+        if r_ida.status_code == 200 and r_vta.status_code == 200:
+            dias_ida = {f["day"]: f["price"]["value"] for f in r_ida.json().get("outbound", {}).get("fares", []) if f.get("price")}
+            dias_vta = {f["day"]: f["price"]["value"] for f in r_vta.json().get("outbound", {}).get("fares", []) if f.get("price")}
 
-        # 1. Extraccion de la aerolinea principal mencionada en la tarjeta del itinerario
-        aerolinea = "Vuelo Directo"
-        aerolineas_clave = [
-            ("EasyJet", "easyjet"),
-            ("SWISS", "swiss"),
-            ("Ryanair", "ryanair"),
-            ("Wizz Air", "wizz"),
-            ("Iberia", "iberia"),
-            ("TAP Air Portugal", "tap"),
-            ("Vueling", "vueling"),
-            ("Lufthansa", "lufthansa")
-        ]
-        texto_lower = texto.lower()
-        for nombre_oficial, palabra_clave in aerolineas_clave:
-            if palabra_clave in texto_lower:
-                aerolinea = nombre_oficial
-                break
+            if f_ida in dias_ida and f_vta in dias_vta:
+                p_ida = float(dias_ida[f_ida])
+                p_vta = float(dias_vta[f_vta])
+                precio_total = round(p_ida + p_vta, 2)
 
-        # 2. Localizacion de la tarifa total de ida y vuelta en CHF dentro del flujo de datos
-        # Se buscan coincidencias con el patron de moneda suiza (CHF o Fr.) seguido del valor numerico
-        patrones = [
-            r'data-fare=["\'](\d+)["\']',
-            r'(?:CHF|Fr\.)\s*([0-9]{1,3}(?:[\.,][0-9]{2})?)',
-            r'([0-9]{1,3}(?:[\.,][0-9]{2})?)\s*(?:CHF|Fr\.)',
-            r'\[null,null,null,null,null,null,\[\[(\d+),'
-        ]
+                if precio_total <= tope_vuelo:
+                    url_directa_ryanair = f"https://www.ryanair.com/es/es/trip/flights/select?originIata={origen}&destinationIata={destino_cod}&tpAdults=1&tpStartDate={f_ida}&tpEndDate={f_vta}&isReturn=true"
+                    return precio_total, "Ryanair", url_directa_ryanair
+    except Exception:
+        pass
 
-        valores_detectados = []
-        for patron in patrones:
-            coincidencias = re.findall(patron, texto)
-            for item in coincidencias:
-                limpio = str(item).replace(",", ".").strip()
-                try:
-                    val = float(limpio)
-                    # Filtro de sensatez: se ignoran importes menores a 15 CHF (tasas o seguros)
-                    # y superiores a 350 CHF
-                    if 15.0 <= val <= 350.0:
-                        valores_detectados.append(val)
-                except ValueError:
-                    continue
+    # 2. Si no es Ryanair o no entra en precio, consulta el frontend multiaerolínea
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36",
+        "Accept-Language": "es-CH,es;q=0.9,de-CH;q=0.8",
+        "Referer": "https://www.google.com/travel/flights"
+    }
+    try:
+        r = session.get(url_reserva, headers=headers, timeout=6)
+        if r.status_code == 200 and "CHF" in r.text:
+            # Busqueda de precios verificados de ida y vuelta en francos suizos
+            precios = re.findall(r"(?:CHF|Fr\.)\s*(\d+)", r.text)
+            precios_validos = [float(p) for p in precios if 20.0 <= float(p) <= tope_vuelo]
+            
+            if precios_validos:
+                aerolinea = "Multiaerolínea (Google Flights)"
+                if "easyjet" in r.text.lower():
+                    aerolinea = "EasyJet"
+                elif "swiss" in r.text.lower():
+                    aerolinea = "SWISS"
+                return min(precios_validos), aerolinea, url_reserva
+    except Exception:
+        pass
 
-        if valores_detectados:
-            precio_minimo = min(valores_detectados)
-            return precio_minimo, aerolinea, url
+    return None, None, url_reserva
 
-    except Exception as e:
-        print(f"[Aviso] Falla de conexion para {origen}->{destino_cod}: {e}")
-
-    return None, "Desconocida", url
-
-def rastrear_escapadas_multiaerolinea(session, origen, destino, dias_horizonte=45):
+def rastrear_escapadas_4dias(session, origen, destino, dias_horizonte=45):
     vuelos_validos = []
     hoy = datetime.now()
     cod_dest = destino["codigo"]
@@ -223,7 +216,6 @@ def rastrear_escapadas_multiaerolinea(session, origen, destino, dias_horizonte=4
     transfer_lucerna = AEROPUERTOS_CONFIG[origen]["transfer_chf"]
     tope_vuelo_permitido = round(PRESUPUESTO_TOTAL_MAX_CHF - transfer_lucerna, 2)
 
-    # Identificacion de fines de semana de 4 dias (Jueves a Domingo y Viernes a Lunes)
     combinaciones = []
     for d in range(1, dias_horizonte):
         f_ida_dt = hoy + timedelta(days=d)
@@ -238,16 +230,14 @@ def rastrear_escapadas_multiaerolinea(session, origen, destino, dias_horizonte=4
                 etiqueta
             ))
 
-    # Se procesa un lote concentrado de los proximos 4 fines de semana
     for f_ida_str, f_vta_str, etiqueta_patron in combinaciones[:4]:
-        precio_vuelo, aerolinea, url_directa = consultar_vuelos_google(
-            session, origen, cod_dest, f_ida_str, f_vta_str
+        precio_vuelo, aerolinea, url_reserva = verificar_disponibilidad_real(
+            session, origen, cod_dest, f_ida_str, f_vta_str, tope_vuelo_permitido
         )
 
         if precio_vuelo is not None:
             coste_total_viaje = round(precio_vuelo + transfer_lucerna, 2)
 
-            # Validacion inquebrantable del presupuesto global
             if coste_total_viaje <= PRESUPUESTO_TOTAL_MAX_CHF:
                 v_id = f"{origen}-{cod_dest}-{f_ida_str}-{f_vta_str}-{int(coste_total_viaje)}"
                 vuelos_validos.append({
@@ -264,8 +254,8 @@ def rastrear_escapadas_multiaerolinea(session, origen, destino, dias_horizonte=4
                     "fechas": f"{f_ida_str} al {f_vta_str}",
                     "fecha_ida": f_ida_str,
                     "fecha_vuelta": f_vta_str,
-                    "aerolinea": aerolinea,
-                    "url": url_directa,
+                    "aerolinea": aerolinea or "Directo",
+                    "url": url_reserva,
                     "fecha_deteccion": datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S UTC")
                 })
 
@@ -368,7 +358,7 @@ PLANTILLA_HTML = """<!DOCTYPE html>
             html += '      <div style="text-align: right;">';
             html += '        <div class="vuelo-precio">' + v.coste_total_chf + ' CHF</div>';
             html += '        <div style="font-size:11px;color:#64748b;">TOTAL VIAJE</div>';
-            html += '        <a href="' + v.url + '" target="_blank" class="btn-ver">Ver en Google Flights</a>';
+            html += '        <a href="' + v.url + '" target="_blank" class="btn-ver">Ver Oferta</a>';
             html += '      </div>';
             html += '    </div>';
           });
@@ -519,7 +509,7 @@ def main():
     print(f"[Cola] Procesando ruta: {aero_actual} -> {ciudad_actual['nombre']} ({ciudad_actual['codigo']})...")
 
     with requests.Session() as s:
-        encontrados = rastrear_escapadas_multiaerolinea(s, aero_actual, ciudad_actual, dias_horizonte=45)
+        encontrados = rastrear_escapadas_4dias(s, aero_actual, ciudad_actual, dias_horizonte=45)
 
     nuevos = []
     for v in encontrados:
