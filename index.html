@@ -3,20 +3,20 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Radar de Vuelos Directos Suiza</title>
+  <title>Radar de Escapadas Fin de Semana (Máx 100 CHF)</title>
   <style>
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #f1f5f9; color: #0f172a; margin: 0; padding: 20px; }
-    .container { max-width: 900px; margin: 0 auto; }
+    .container { max-width: 960px; margin: 0 auto; }
     .header { background: #0f172a; color: white; padding: 24px; border-radius: 12px; margin-bottom: 24px; text-align: center; }
-    .header h1 { margin: 0 0 8px 0; font-size: 26px; }
+    .header h1 { margin: 0 0 8px 0; font-size: 24px; }
     .header p { margin: 0; color: #94a3b8; font-size: 14px; }
-    .tabs { display: flex; gap: 10px; margin-bottom: 20px; flex-wrap: wrap; }
-    .tab-btn { flex: 1; min-width: 200px; background: white; border: 2px solid #cbd5e1; padding: 14px; border-radius: 8px; font-size: 15px; font-weight: 700; color: #334155; cursor: pointer; text-align: center; transition: all 0.2s; }
+    .tabs { display: flex; gap: 8px; margin-bottom: 20px; flex-wrap: wrap; }
+    .tab-btn { flex: 1; min-width: 160px; background: white; border: 2px solid #cbd5e1; padding: 12px; border-radius: 8px; font-size: 14px; font-weight: 700; color: #334155; cursor: pointer; text-align: center; transition: all 0.2s; }
     .tab-btn.active { background: #2563eb; color: white; border-color: #2563eb; }
     .aeropuerto-content { display: none; }
     .aeropuerto-content.active { display: block; }
     .ciudad-card { background: white; border: 1px solid #e2e8f0; border-radius: 8px; margin-bottom: 12px; overflow: hidden; }
-    .ciudad-header { background: #f8fafc; padding: 14px 18px; font-weight: 700; font-size: 16px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
+    .ciudad-header { background: #f8fafc; padding: 14px 18px; font-weight: 700; font-size: 15px; cursor: pointer; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #e2e8f0; }
     .badge { background: #e2e8f0; color: #334155; font-size: 12px; padding: 4px 10px; border-radius: 12px; font-weight: 600; }
     .vuelos-list { padding: 16px; display: none; background: #ffffff; }
     .vuelos-list.open { display: block; }
@@ -31,36 +31,40 @@
 <body>
   <div class="container">
     <div class="header">
-      <h1>Radar de Vuelos Directos Suiza</h1>
-      <p>Catálogo centralizado clasificado por aeropuertos y destinos</p>
+      <h1>Radar Escapadas Fin de Semana (Multiaerolínea)</h1>
+      <p>Puerta a puerta desde Lucerna · Presupuesto Total &le; 100 CHF (Vuelo + Tren Halbtax)</p>
     </div>
 
     <div class="tabs">
-      <div id="btn-BSL" class="tab-btn" onclick="cambiarAeropuerto('BSL')">📁 Basilea (BSL) (<span id="count-BSL">0</span> chollos)</div>
-      <div id="btn-GVA" class="tab-btn" onclick="cambiarAeropuerto('GVA')">📁 Ginebra (GVA) (<span id="count-GVA">0</span> chollos)</div>
-      <div id="btn-ZRH" class="tab-btn" onclick="cambiarAeropuerto('ZRH')">📁 Zúrich (ZRH) (<span id="count-ZRH">0</span> chollos)</div>
+      <div id="btn-ZRH" class="tab-btn" onclick="cambiarAeropuerto('ZRH')">📁 Zúrich (<span id="count-ZRH">0</span>)</div>
+      <div id="btn-BSL" class="tab-btn" onclick="cambiarAeropuerto('BSL')">📁 Basilea (<span id="count-BSL">0</span>)</div>
+      <div id="btn-BGY" class="tab-btn" onclick="cambiarAeropuerto('BGY')">📁 M. Bérgamo (<span id="count-BGY">0</span>)</div>
+      <div id="btn-MXP" class="tab-btn" onclick="cambiarAeropuerto('MXP')">📁 M. Malpensa (<span id="count-MXP">0</span>)</div>
+      <div id="btn-GVA" class="tab-btn" onclick="cambiarAeropuerto('GVA')">📁 Ginebra (<span id="count-GVA">0</span>)</div>
     </div>
 
-    <div id="panel-BSL" class="aeropuerto-content"></div>
-    <div id="panel-GVA" class="aeropuerto-content"></div>
     <div id="panel-ZRH" class="aeropuerto-content"></div>
+    <div id="panel-BSL" class="aeropuerto-content"></div>
+    <div id="panel-BGY" class="aeropuerto-content"></div>
+    <div id="panel-MXP" class="aeropuerto-content"></div>
+    <div id="panel-GVA" class="aeropuerto-content"></div>
   </div>
 
   <script id="datos-vuelos" type="application/json">
-    [{"id": "BSL-ZAG-2026-11-21-2026-11-22-27", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.97, "precio_vuelta": 13.97, "precio_chf": 27.94, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-11 09:13:15 UTC"}, {"id": "BSL-ZAG-2026-11-21-2026-11-22-28", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.97, "precio_vuelta": 14.91, "precio_chf": 28.88, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-14 18:29:08 UTC"}, {"id": "BSL-ZAG-2026-11-21-2026-11-22-29", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.88, "precio_vuelta": 15.73, "precio_chf": 29.61, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-19 18:27:04 UTC"}, {"id": "BSL-ZAG-2026-11-21-2026-11-22-30", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.88, "precio_vuelta": 16.66, "precio_chf": 30.54, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-19 21:23:58 UTC"}, {"id": "BSL-STN-2026-11-04-2026-11-06-32", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "STN", "destino_nombre": "London Stansted", "precio_ida": 16.0, "precio_vuelta": 16.0, "precio_chf": 32.0, "presupuesto_max_chf": 55.0, "duracion_dias": 3, "fechas": "2026-11-04 al 2026-11-06", "fecha_ida": "2026-11-04", "fecha_vuelta": "2026-11-06", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=STN&tpAdults=1&tpStartDate=2026-11-04&tpEndDate=2026-11-06&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-21 03:25:32 UTC"}, {"id": "BSL-STN-2026-11-04-2026-11-06-33", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "STN", "destino_nombre": "London Stansted", "precio_ida": 17.42, "precio_vuelta": 16.0, "precio_chf": 33.42, "presupuesto_max_chf": 55.0, "duracion_dias": 3, "fechas": "2026-11-04 al 2026-11-06", "fecha_ida": "2026-11-04", "fecha_vuelta": "2026-11-06", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=STN&tpAdults=1&tpStartDate=2026-11-04&tpEndDate=2026-11-06&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-23 18:26:15 UTC"}]
+    [{"id": "BSL-ZAG-2026-11-21-2026-11-22-27", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.97, "precio_vuelta": 13.97, "precio_chf": 27.94, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-11 09:13:15 UTC"}, {"id": "BSL-ZAG-2026-11-21-2026-11-22-28", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.97, "precio_vuelta": 14.91, "precio_chf": 28.88, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-14 18:29:08 UTC"}, {"id": "BSL-ZAG-2026-11-21-2026-11-22-29", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.88, "precio_vuelta": 15.73, "precio_chf": 29.61, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-19 18:27:04 UTC"}, {"id": "BSL-ZAG-2026-11-21-2026-11-22-30", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "ZAG", "destino_nombre": "Zagreb", "precio_ida": 13.88, "precio_vuelta": 16.66, "precio_chf": 30.54, "presupuesto_max_chf": 45.0, "duracion_dias": 2, "fechas": "2026-11-21 al 2026-11-22", "fecha_ida": "2026-11-21", "fecha_vuelta": "2026-11-22", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=ZAG&tpAdults=1&tpStartDate=2026-11-21&tpEndDate=2026-11-22&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-19 21:23:58 UTC"}, {"id": "BSL-STN-2026-11-04-2026-11-06-32", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "STN", "destino_nombre": "London Stansted", "precio_ida": 16.0, "precio_vuelta": 16.0, "precio_chf": 32.0, "presupuesto_max_chf": 55.0, "duracion_dias": 3, "fechas": "2026-11-04 al 2026-11-06", "fecha_ida": "2026-11-04", "fecha_vuelta": "2026-11-06", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=STN&tpAdults=1&tpStartDate=2026-11-04&tpEndDate=2026-11-06&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-21 03:25:32 UTC"}, {"id": "BSL-STN-2026-11-04-2026-11-06-33", "origen_iata": "BSL", "origen_nombre": "Basilea (BSL)", "destino_codigo": "STN", "destino_nombre": "London Stansted", "precio_ida": 17.42, "precio_vuelta": 16.0, "precio_chf": 33.42, "presupuesto_max_chf": 55.0, "duracion_dias": 3, "fechas": "2026-11-04 al 2026-11-06", "fecha_ida": "2026-11-04", "fecha_vuelta": "2026-11-06", "aerolinea": "Ryanair", "url": "https://www.ryanair.com/es/es/trip/flights/select?originIata=BSL&destinationIata=STN&tpAdults=1&tpStartDate=2026-11-04&tpEndDate=2026-11-06&tpDiscountCode=&isReturn=true", "fecha_deteccion": "2026-10-23 18:26:15 UTC"}, {"id": "ZRH-PMI-2026-10-29-2026-11-01-61", "origen_iata": "ZRH", "origen_nombre": "Zúrich (ZRH)", "destino_codigo": "PMI", "destino_nombre": "Palma de Mallorca", "patron": "Jueves a Domingo", "precio_vuelo_chf": 35.0, "coste_transfer_chf": 26.0, "coste_total_chf": 61.0, "tope_vuelo_max": 74.0, "fechas": "2026-10-29 al 2026-11-01", "fecha_ida": "2026-10-29", "fecha_vuelta": "2026-11-01", "aerolinea": "EasyJet", "url": "https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20ZRH%20to%20PMI%20departing%202026-10-29%20returning%202026-11-01&curr=CHF&hl=es-CH&gl=ch", "fecha_deteccion": "2026-10-28 17:13:22 UTC"}, {"id": "ZRH-PMI-2026-10-30-2026-11-02-61", "origen_iata": "ZRH", "origen_nombre": "Zúrich (ZRH)", "destino_codigo": "PMI", "destino_nombre": "Palma de Mallorca", "patron": "Viernes a Lunes", "precio_vuelo_chf": 35.0, "coste_transfer_chf": 26.0, "coste_total_chf": 61.0, "tope_vuelo_max": 74.0, "fechas": "2026-10-30 al 2026-11-02", "fecha_ida": "2026-10-30", "fecha_vuelta": "2026-11-02", "aerolinea": "EasyJet", "url": "https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20ZRH%20to%20PMI%20departing%202026-10-30%20returning%202026-11-02&curr=CHF&hl=es-CH&gl=ch", "fecha_deteccion": "2026-10-28 17:13:22 UTC"}]
   </script>
 
   <script>
     const todosVuelos = JSON.parse(document.getElementById('datos-vuelos').textContent);
 
     function construirPaneles() {
-      ['BSL', 'GVA', 'ZRH'].forEach(aero => {
+      ['ZRH', 'BSL', 'BGY', 'MXP', 'GVA'].forEach(aero => {
         const vuelosAero = todosVuelos.filter(v => v.origen_iata === aero);
         document.getElementById('count-' + aero).innerText = vuelosAero.length;
         const panel = document.getElementById('panel-' + aero);
 
         if (vuelosAero.length === 0) {
-          panel.innerHTML = '<div class="vacio">No hay chollos archivados en este momento para ' + aero + '.</div>';
+          panel.innerHTML = '<div class="vacio">No hay escapadas archivadas por debajo de 100 CHF total para ' + aero + '.</div>';
           return;
         }
 
@@ -73,7 +77,7 @@
 
         let html = '';
         for (const [ciudad, lista] of Object.entries(agrupados)) {
-          lista.sort((a, b) => a.precio_chf - b.precio_chf);
+          lista.sort((a, b) => a.coste_total_chf - b.coste_total_chf);
           html += '<div class="ciudad-card">';
           html += '  <div class="ciudad-header" onclick="this.nextElementSibling.classList.toggle(\'open\')">';
           html += '    <span>🏙 ' + ciudad + '</span>';
@@ -83,13 +87,14 @@
           lista.forEach(v => {
             html += '    <div class="vuelo-item">';
             html += '      <div>';
-            html += '        <span class="vuelo-tag">' + v.duracion_dias + ' DÍAS · ' + v.fechas + ' · Ida (' + v.precio_ida + ' CHF) + Vuelta (' + v.precio_vuelta + ' CHF)</span>';
-            html += '        <div class="vuelo-info">🛫 ' + v.origen_nombre + ' ➔ ' + v.destino_nombre + ' (' + v.destino_codigo + ')</div>';
-            html += '        <div style="font-size:12px;color:#64748b;">Directo Oficial · Límite: ' + v.presupuesto_max_chf + ' CHF</div>';
+            html += '        <span class="vuelo-tag">' + v.patron + ' · ' + v.fechas + ' · ' + (v.aerolinea || 'Directo') + '</span>';
+            html += '        <div class="vuelo-info">🛫 ' + v.origen_nombre + ' ➔ ' + v.destino_nombre + '</div>';
+            html += '        <div style="font-size:12px;color:#475569;margin-top:2px;">Vuelo: ' + v.precio_vuelo_chf + ' CHF + Tren Lucerna: ' + v.coste_transfer_chf + ' CHF</div>';
             html += '      </div>';
             html += '      <div style="text-align: right;">';
-            html += '        <div class="vuelo-precio">' + v.precio_chf + ' CHF</div>';
-            html += '        <a href="' + v.url + '" target="_blank" class="btn-ver">Ver Vuelo</a>';
+            html += '        <div class="vuelo-precio">' + v.coste_total_chf + ' CHF</div>';
+            html += '        <div style="font-size:11px;color:#64748b;">TOTAL VIAJE</div>';
+            html += '        <a href="' + v.url + '" target="_blank" class="btn-ver">Ver en Google Flights</a>';
             html += '      </div>';
             html += '    </div>';
           });
@@ -114,7 +119,7 @@
 
     window.addEventListener('DOMContentLoaded', () => {
       construirPaneles();
-      const hash = window.location.hash.replace('#', '') || 'BSL';
+      const hash = window.location.hash.replace('#', '') || 'ZRH';
       cambiarAeropuerto(hash);
     });
   </script>
