@@ -108,24 +108,6 @@
     "fecha_deteccion": "2026-10-23 18:26:15 UTC"
   },
   {
-    "id": "ZRH-PMI-2026-10-29-2026-11-01-61",
-    "origen_iata": "ZRH",
-    "origen_nombre": "Zúrich (ZRH)",
-    "destino_codigo": "PMI",
-    "destino_nombre": "Palma de Mallorca",
-    "patron": "Jueves a Domingo",
-    "precio_vuelo_chf": 35.0,
-    "coste_transfer_chf": 26.0,
-    "coste_total_chf": 61.0,
-    "tope_vuelo_max": 74.0,
-    "fechas": "2026-10-29 al 2026-11-01",
-    "fecha_ida": "2026-10-29",
-    "fecha_vuelta": "2026-11-01",
-    "aerolinea": "EasyJet",
-    "url": "https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20ZRH%20to%20PMI%20departing%202026-10-29%20returning%202026-11-01&curr=CHF&hl=es-CH&gl=ch",
-    "fecha_deteccion": "2026-10-28 17:13:22 UTC"
-  },
-  {
     "id": "ZRH-PMI-2026-10-30-2026-11-02-61",
     "origen_iata": "ZRH",
     "origen_nombre": "Zúrich (ZRH)",
