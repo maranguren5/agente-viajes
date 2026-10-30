@@ -124,5 +124,23 @@
     "aerolinea": "EasyJet",
     "url": "https://www.google.com/travel/flights?q=Round-trip%20flights%20from%20ZRH%20to%20PMI%20departing%202026-10-30%20returning%202026-11-02&curr=CHF&hl=es-CH&gl=ch",
     "fecha_deteccion": "2026-10-28 17:13:22 UTC"
+  },
+  {
+    "id": "BSL-MAD-2026-11-06-2026-11-09-66",
+    "origen_iata": "BSL",
+    "origen_nombre": "Basilea (BSL)",
+    "destino_codigo": "MAD",
+    "destino_nombre": "Madrid",
+    "patron": "Viernes a Lunes",
+    "precio_vuelo_chf": 34.0,
+    "coste_transfer_chf": 32.0,
+    "coste_total_chf": 66.0,
+    "tope_vuelo_max": 68.0,
+    "fechas": "2026-11-06 al 2026-11-09",
+    "fecha_ida": "2026-11-06",
+    "fecha_vuelta": "2026-11-09",
+    "aerolinea": "EasyJet",
+    "url": "https://www.google.com/travel/flights?q=flights%20from%20BSL%20to%20MAD%20on%202026-11-06%20return%202026-11-09&curr=CHF&hl=es",
+    "fecha_deteccion": "2026-10-30 12:40:34 UTC"
   }
 ]
